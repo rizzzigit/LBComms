@@ -214,60 +214,31 @@ var Port = /** @class */ (function () {
         for (var _i = 1; _i < arguments.length; _i++) {
             args[_i - 1] = arguments[_i];
         }
-        return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, pendingRemoteCalls, randomBytesSize, token, tokenStr, payload, promise;
-            var _this = this;
-            return tslib_1.__generator(this, function (_b) {
-                switch (_b.label) {
-                    case 0:
-                        _a = this, pendingRemoteCalls = _a.pendingRemoteCalls, randomBytesSize = _a.options.randomBytesSize;
-                        return [4 /*yield*/, (function () { return tslib_1.__awaiter(_this, void 0, void 0, function () {
-                                var token;
-                                return tslib_1.__generator(this, function (_a) {
-                                    do {
-                                        token = crypto_1.default.randomBytes(randomBytesSize);
-                                    } while (token.toString('hex') in pendingRemoteCalls);
-                                    return [2 /*return*/, token];
-                                });
-                            }); })()];
-                    case 1:
-                        token = _b.sent();
-                        tokenStr = token.toString('hex');
-                        payload = this.buildPayload(PortCommand.Request, this.buildRequest.apply(this, tslib_1.__spreadArray([token, name], args, false)));
-                        promise = new Promise(function (resolve, reject) { return (pendingRemoteCalls[tokenStr] = { resolve: resolve, reject: reject }); });
-                        this.sendPayload(payload);
-                        return [2 /*return*/, promise];
-                }
-            });
-        });
+        var _a = this, pendingRemoteCalls = _a.pendingRemoteCalls, randomBytesSize = _a.options.randomBytesSize;
+        var token = (function () {
+            var token;
+            do {
+                token = crypto_1.default.randomBytes(randomBytesSize);
+            } while (token.toString('hex') in pendingRemoteCalls);
+            return token;
+        })();
+        var tokenStr = token.toString('hex');
+        var promise = new Promise(function (resolve, reject) { return (pendingRemoteCalls[tokenStr] = { resolve: resolve, reject: reject }); });
+        var payload = this.buildPayload(PortCommand.Request, this.buildRequest.apply(this, tslib_1.__spreadArray([token, name], args, false)));
+        this.sendPayload(payload);
+        return promise;
     };
     Port.prototype.execLocal = function (name) {
+        var _a;
         var args = [];
         for (var _i = 1; _i < arguments.length; _i++) {
             args[_i - 1] = arguments[_i];
         }
-        return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a;
-            return tslib_1.__generator(this, function (_b) {
-                switch (_b.label) {
-                    case 0: return [4 /*yield*/, (_a = this.callbacks)[name].apply(_a, args)];
-                    case 1: return [2 /*return*/, _b.sent()];
-                }
-            });
-        });
+        return (_a = this.callbacks)[name].apply(_a, args);
     };
     Port.prototype._write = function (buffer) {
-        return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _this = this;
-            return tslib_1.__generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0: return [4 /*yield*/, new Promise(function (resolve, reject) { return _this.socket.write(buffer, function (error) { return error ? reject(error) : resolve(); }); })];
-                    case 1:
-                        _a.sent();
-                        return [2 /*return*/];
-                }
-            });
-        });
+        var _this = this;
+        return new Promise(function (resolve, reject) { return _this.socket.write(buffer, function (error) { return error ? reject(error) : resolve(); }); });
     };
     Port.prototype.runWriteQueue = function () {
         return tslib_1.__awaiter(this, void 0, void 0, function () {

@@ -36,7 +36,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     }
     this.socket = socket
     this.serializer = new LBSerializer.Serializer({
-      ranodmBytesSize: this.options.randomBytesSize
+      randomBytesSize: this.options.randomBytesSize
     })
     this.encryption = {
       key: this.options.key ? Buffer.from(this.options.key, 'hex') : undefined
@@ -223,11 +223,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       const { [tokenStr]: { resolve, reject } } = pendingRemoteCalls
       delete pendingRemoteCalls[tokenStr]
 
-      if (data instanceof Error) {
-        reject(data)
-      } else {
-        resolve(data)
-      }
+      if (data instanceof Error) { reject(data) } else { resolve(data) }
     } else if (command === PortCommand.SetDelimiter) {
       const { delimiter } = this
       delimiter.remote = argData
@@ -236,10 +232,10 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     }
   }
 
-  public async exec<Name extends keyof RemoteInterface> (name: Name, ...args: RemoteInterface[Name][0]): Promise<RemoteInterface[Name][1]> {
+  public exec<Name extends keyof RemoteInterface> (name: Name, ...args: RemoteInterface[Name][0]): Promise<RemoteInterface[Name][1]> {
     const { pendingRemoteCalls, options: { randomBytesSize } } = this
 
-    const token = await (async () => {
+    const token = (() => {
       let token: Buffer
       do {
         token = Crypto.randomBytes(randomBytesSize)
@@ -247,19 +243,19 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       return token
     })()
     const tokenStr = token.toString('hex')
-    const payload = this.buildPayload(PortCommand.Request, this.buildRequest(token, <string> name, ...args))
     const promise = new Promise<RemoteInterface[Name][1]>((resolve, reject) => (pendingRemoteCalls[tokenStr] = { resolve, reject }))
+    const payload = this.buildPayload(PortCommand.Request, this.buildRequest(token, <string> name, ...args))
 
     this.sendPayload(payload)
     return promise
   }
 
-  public async execLocal<Name extends keyof LocalInterface> (name: Name, ...args: LocalInterface[Name][0]): Promise<LocalInterface[Name][1]> {
-    return await this.callbacks[name](...args)
+  public execLocal<Name extends keyof LocalInterface> (name: Name, ...args: LocalInterface[Name][0]): Promise<LocalInterface[Name][1]> {
+    return this.callbacks[name](...args)
   }
 
-  public async _write (buffer: Buffer) {
-    await new Promise<void>((resolve, reject) => this.socket.write(buffer, (error) => error ? reject(error) : resolve()))
+  public _write (buffer: Buffer) {
+    return new Promise<void>((resolve, reject) => this.socket.write(buffer, (error) => error ? reject(error) : resolve()))
   }
 
   public isWriteQueueRunning: boolean
@@ -320,7 +316,6 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     const { socket, options: { randomBytesSize, blockingEvaluations }, delimiter } = this
 
     let sink = Buffer.alloc(0)
-
     let dataCallback = () => {}
 
     socket.on('data', (data) => {
