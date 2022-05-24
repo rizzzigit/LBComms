@@ -1,364 +1,283 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Port = exports.PortCommand = void 0;
+exports.Port = exports.PortPayloadResponseType = exports.PortPayloadType = void 0;
 var tslib_1 = require("tslib");
 var crypto_1 = tslib_1.__importDefault(require("crypto"));
 var lb_serializer_1 = tslib_1.__importDefault(require("@rizzzi/lb-serializer"));
-var PortCommand;
-(function (PortCommand) {
-    PortCommand[PortCommand["SetDelimiter"] = 0] = "SetDelimiter";
-    PortCommand[PortCommand["Request"] = 1] = "Request";
-    PortCommand[PortCommand["Response"] = 2] = "Response";
-    PortCommand[PortCommand["Padding"] = 3] = "Padding";
-})(PortCommand = exports.PortCommand || (exports.PortCommand = {}));
+var eventemitter_1 = tslib_1.__importDefault(require("@rizzzi/eventemitter"));
+var PortPayloadType;
+(function (PortPayloadType) {
+    PortPayloadType[PortPayloadType["Request"] = 0] = "Request";
+    PortPayloadType[PortPayloadType["Response"] = 1] = "Response";
+    PortPayloadType[PortPayloadType["Raw"] = 2] = "Raw";
+})(PortPayloadType = exports.PortPayloadType || (exports.PortPayloadType = {}));
+var PortPayloadResponseType;
+(function (PortPayloadResponseType) {
+    PortPayloadResponseType[PortPayloadResponseType["Data"] = 0] = "Data";
+    PortPayloadResponseType[PortPayloadResponseType["Error"] = 1] = "Error";
+})(PortPayloadResponseType = exports.PortPayloadResponseType || (exports.PortPayloadResponseType = {}));
 var Port = /** @class */ (function () {
     function Port(socket, callbacks, options) {
-        this.options = tslib_1.__assign({ randomBytesSize: 4, blockingEvaluations: false }, options);
+        this.options = tslib_1.__assign({ blockingEvaluations: false }, options);
+        this.serializer = new lb_serializer_1.default.Serializer();
         this.socket = socket;
-        this.serializer = new lb_serializer_1.default.Serializer({
-            ranodmBytesSize: this.options.randomBytesSize
-        });
-        this.encryption = {
-            key: this.options.key ? Buffer.from(this.options.key, 'hex') : undefined
-        };
-        this.callbacks = tslib_1.__assign(tslib_1.__assign({}, callbacks), { np: function () { } });
-        this.pendingRemoteCalls = {};
-        this.isWriteQueueRunning = false;
-        this.writeQueue = [];
-        this.delimiter = {
-            local: Buffer.alloc(0),
-            remote: Buffer.alloc(0)
-        };
+        this.callbacks = tslib_1.__assign(tslib_1.__assign({}, callbacks), { _np: function () { } });
+        this.events = new eventemitter_1.default({ requireErrorHandling: true });
+        this.pendingRequests = {};
+        this._isQueueRunning = false;
+        this._writeQueue = [];
         this._init();
     }
-    Port.prototype.ping = function (passCount) {
-        if (passCount === void 0) { passCount = 1; }
-        return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var ping, pass, start, stop;
-            return tslib_1.__generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0:
-                        ping = 0;
-                        pass = 0;
-                        _a.label = 1;
-                    case 1:
-                        if (!(passCount > pass)) return [3 /*break*/, 4];
-                        start = Date.now();
-                        return [4 /*yield*/, this.exec('np')];
-                    case 2:
-                        _a.sent();
-                        stop = Date.now();
-                        ping += (stop - start);
-                        _a.label = 3;
-                    case 3:
-                        pass++;
-                        return [3 /*break*/, 1];
-                    case 4: return [2 /*return*/, ping / passCount];
-                }
-            });
+    Port.prototype.writePayload = function () {
+        var payload = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            payload[_i] = arguments[_i];
+        }
+        return this._write(this.buildPayload(payload));
+    };
+    Port.prototype.write = function (data) {
+        this.writePayload(PortPayloadType.Raw, this.serializer.serialize(data));
+    };
+    Port.prototype.exec = function (name) {
+        var _this = this;
+        var parameters = [];
+        for (var _i = 1; _i < arguments.length; _i++) {
+            parameters[_i - 1] = arguments[_i];
+        }
+        var pendingRequests = this.pendingRequests;
+        var token = (function () {
+            var token;
+            do {
+                token = crypto_1.default.randomBytes(16);
+            } while (token.toString('hex') in pendingRequests);
+            return token;
+        })();
+        var tokenStr = token.toString('hex');
+        return new Promise(function (resolve, reject) {
+            pendingRequests[tokenStr] = { resolve: resolve, reject: reject };
+            _this.writePayload(PortPayloadType.Request, token, name, parameters)
+                .catch(reject);
         });
     };
-    Port.prototype.buildRequest = function (token, name) {
-        var args = [];
-        for (var _i = 2; _i < arguments.length; _i++) {
-            args[_i - 2] = arguments[_i];
-        }
-        return Buffer.concat([token, this.serializer.serialize({ name: name, args: args })]);
-    };
-    Port.prototype.parseRequest = function (buffer) {
-        var randomBytesSize = this.options.randomBytesSize;
-        var token = buffer.slice(0, randomBytesSize);
-        var _a = this.serializer.deserialize(buffer.slice(token.length)), name = _a.name, args = _a.args;
-        return { token: token, name: name, args: args };
-    };
-    Port.prototype.buildRseponse = function (token, result) {
-        var buffer = Buffer.concat([token, this.serializer.serialize(result)]);
-        return buffer;
-    };
-    Port.prototype.parseResponse = function (buffer) {
-        var randomBytesSize = this.options.randomBytesSize;
-        var token = buffer.slice(0, randomBytesSize);
-        var data = this.serializer.deserialize(buffer.slice(randomBytesSize));
-        return { token: token, data: data };
-    };
-    Port.prototype.encrypt = function (buffer) {
-        if (this.encryption.key) {
-            var iv = crypto_1.default.randomBytes(16);
-            var cipher = crypto_1.default.createCipheriv('aes256', this.encryption.key, iv);
+    Port.prototype.encryptPayload = function (inputBuffer) {
+        var key = this.key;
+        if (key) {
+            var initializationVector = crypto_1.default.randomBytes(16);
+            var cipher = crypto_1.default.createCipheriv('aes256', key, initializationVector);
             return Buffer.concat([
-                Buffer.from([0]),
-                iv,
-                cipher.update(buffer),
+                Buffer.from([1]),
+                initializationVector,
+                cipher.update(inputBuffer),
                 cipher.final()
             ]);
         }
         else {
             return Buffer.concat([
-                Buffer.from([1]),
-                buffer
+                Buffer.from([0]),
+                inputBuffer
             ]);
         }
     };
-    Port.prototype.decrypt = function (buffer) {
-        if (buffer[0] === 0) {
-            var iv = buffer.slice(1, 17);
-            if (!this.encryption.key) {
-                throw new Error('No encryption key specified to decrypt the buffer');
+    Port.prototype.decryptPayload = function (inputBuffer) {
+        var key = this.key;
+        if (inputBuffer[0]) {
+            if (!key) {
+                throw new Error('No key present to decrypt payload');
             }
-            var decipher = crypto_1.default.createDecipheriv('aes256', this.encryption.key, iv);
-            return Buffer.concat([
-                decipher.update(buffer.slice(17)),
-                decipher.final()
-            ]);
-        }
-        else if (buffer[0] === 1) {
-            return buffer.slice(1);
+            var initializationVector = inputBuffer.slice(1, 17);
+            var decipher = crypto_1.default.createDecipheriv('aes256', key, initializationVector);
+            return Buffer.concat([decipher.update(inputBuffer), decipher.final()]);
         }
         else {
-            throw new Error("Invalid byte: 0x".concat(buffer.slice(0, 1).toString('hex')));
+            return inputBuffer.slice(1);
         }
     };
-    Port.prototype.buildPayload = function (command) {
-        var data = [];
-        for (var _i = 1; _i < arguments.length; _i++) {
-            data[_i - 1] = arguments[_i];
-        }
-        var buffer = Buffer.concat(tslib_1.__spreadArray([Buffer.from([command])], data, true));
-        return this.encrypt(buffer);
+    Port.prototype.buildPayload = function (inputPayload) {
+        var type = inputPayload[0];
+        var data = inputPayload.slice(1);
+        return this.encryptPayload(Buffer.concat([
+            Buffer.from([type]),
+            this.serializer.serialize(data)
+        ]));
     };
-    Port.prototype.parsePayload = function (buffer) {
-        var decrypt = this.decrypt(buffer);
-        var command = decrypt[0];
-        var argData = decrypt.slice(1);
-        return { command: command, argData: argData };
+    Port.prototype.parsePayload = function (inputBuffer) {
+        var decrypted = this.decryptPayload(inputBuffer);
+        var type = decrypted[0];
+        var data = decrypted.slice(1);
+        return tslib_1.__spreadArray([
+            type
+        ], this.serializer.deserialize(data), true);
     };
-    Port.prototype.sendPayload = function (buffer) {
-        var _a = this, delimiter = _a.delimiter, randomBytesSize = _a.options.randomBytesSize;
-        var sink = Buffer.alloc(0);
-        if (!delimiter.local.length) {
-            var newDelimiter = crypto_1.default.randomBytes(randomBytesSize);
-            sink = Buffer.concat([sink, newDelimiter]);
-            delimiter.local = newDelimiter;
-        }
-        if (buffer.indexOf(delimiter.local) > -1) {
-            var newDelimiter = void 0;
-            do {
-                newDelimiter = crypto_1.default.randomBytes(randomBytesSize);
-            } while (buffer.indexOf(delimiter.local) > -1);
-            sink = Buffer.concat([sink, this.buildPayload(PortCommand.SetDelimiter, newDelimiter), delimiter.local]);
-            delimiter.local = newDelimiter;
-        }
-        sink = Buffer.concat([sink, buffer, delimiter.local]);
-        return this.write(sink);
-    };
-    Port.prototype.evaluatePayload = function (buffer) {
+    Port.prototype._runWriteQueue = function () {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, command, argData, _b, token, name_1, args_1, result, pendingRemoteCalls, _c, token, data, tokenStr, _d, _e, _f, resolve, reject, delimiter;
-            var _this = this;
-            return tslib_1.__generator(this, function (_g) {
-                switch (_g.label) {
+            var _a, writeQueue, socket, buffers_1, resolves_1, rejects_1, entry, sizeBuffer;
+            return tslib_1.__generator(this, function (_b) {
+                switch (_b.label) {
                     case 0:
-                        _a = this.parsePayload(buffer), command = _a.command, argData = _a.argData;
-                        if (!(command === PortCommand.Request)) return [3 /*break*/, 3];
-                        _b = this.parseRequest(argData), token = _b.token, name_1 = _b.name, args_1 = _b.args;
-                        return [4 /*yield*/, (function () { return tslib_1.__awaiter(_this, void 0, void 0, function () {
-                                var error_1;
-                                return tslib_1.__generator(this, function (_a) {
-                                    switch (_a.label) {
-                                        case 0:
-                                            _a.trys.push([0, 2, , 3]);
-                                            return [4 /*yield*/, this.execLocal.apply(this, tslib_1.__spreadArray([name_1], args_1, false))];
-                                        case 1: return [2 /*return*/, _a.sent()];
-                                        case 2:
-                                            error_1 = _a.sent();
-                                            return [2 /*return*/, error_1];
-                                        case 3: return [2 /*return*/];
-                                    }
-                                });
-                            }); })()];
+                        _a = this, writeQueue = _a._writeQueue, socket = _a.socket;
+                        if (this._isQueueRunning) {
+                            return [2 /*return*/];
+                        }
+                        this._isQueueRunning = true;
+                        _b.label = 1;
                     case 1:
-                        result = _g.sent();
-                        return [4 /*yield*/, this.sendPayload(this.buildPayload(PortCommand.Response, this.buildRseponse(token, result)))];
+                        _b.trys.push([1, , 3, 4]);
+                        buffers_1 = [];
+                        resolves_1 = [];
+                        rejects_1 = [];
+                        while (writeQueue.length) {
+                            entry = writeQueue.shift();
+                            if (!entry) {
+                                break;
+                            }
+                            sizeBuffer = Buffer.from((function (hex) { return hex.length % 2 ? "0".concat(hex) : hex; })(entry.buffer.length.toString(16)), 'hex');
+                            buffers_1.push(Buffer.from([sizeBuffer.length]), sizeBuffer, entry.buffer);
+                            resolves_1.push(entry.resolve);
+                            rejects_1.push(entry.reject);
+                        }
+                        return [4 /*yield*/, new Promise(function (resolve, reject) { return socket.write(Buffer.concat(buffers_1), function (error) { return error ? reject(error) : resolve(); }); })
+                                .then(function () { return resolves_1.forEach(function (f) { return f(); }); })
+                                .catch(function (error) { return rejects_1.forEach(function (f) { return f(error); }); })];
                     case 2:
-                        _g.sent();
+                        _b.sent();
                         return [3 /*break*/, 4];
                     case 3:
-                        if (command === PortCommand.Response) {
-                            pendingRemoteCalls = this.pendingRemoteCalls;
-                            _c = this.parseResponse(argData), token = _c.token, data = _c.data;
-                            tokenStr = token.toString('hex');
-                            _d = pendingRemoteCalls, _e = tokenStr, _f = _d[_e], resolve = _f.resolve, reject = _f.reject;
-                            delete pendingRemoteCalls[tokenStr];
-                            if (data instanceof Error) {
-                                reject(data);
-                            }
-                            else {
-                                resolve(data);
-                            }
-                        }
-                        else if (command === PortCommand.SetDelimiter) {
-                            delimiter = this.delimiter;
-                            delimiter.remote = argData;
-                        }
-                        else if (command === PortCommand.Padding) {
-                            //
-                        }
-                        _g.label = 4;
+                        this._isQueueRunning = false;
+                        return [7 /*endfinally*/];
                     case 4: return [2 /*return*/];
                 }
             });
         });
     };
-    Port.prototype.exec = function (name) {
-        var args = [];
-        for (var _i = 1; _i < arguments.length; _i++) {
-            args[_i - 1] = arguments[_i];
-        }
-        var _a = this, pendingRemoteCalls = _a.pendingRemoteCalls, randomBytesSize = _a.options.randomBytesSize;
-        var token = (function () {
-            var token;
-            do {
-                token = crypto_1.default.randomBytes(randomBytesSize);
-            } while (token.toString('hex') in pendingRemoteCalls);
-            return token;
-        })();
-        var tokenStr = token.toString('hex');
-        var promise = new Promise(function (resolve, reject) { return (pendingRemoteCalls[tokenStr] = { resolve: resolve, reject: reject }); });
-        var payload = this.buildPayload(PortCommand.Request, this.buildRequest.apply(this, tslib_1.__spreadArray([token, name], args, false)));
-        this.sendPayload(payload);
-        return promise;
-    };
-    Port.prototype.execLocal = function (name) {
-        var _a;
-        var args = [];
-        for (var _i = 1; _i < arguments.length; _i++) {
-            args[_i - 1] = arguments[_i];
-        }
-        return (_a = this.callbacks)[name].apply(_a, args);
-    };
     Port.prototype._write = function (buffer) {
         var _this = this;
-        return new Promise(function (resolve, reject) { return _this.socket.write(buffer, function (error) { return error ? reject(error) : resolve(); }); });
-    };
-    Port.prototype.runWriteQueue = function () {
-        return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var writeQueue, aggregate, sink, _a, buffer, resolve, reject, _i, aggregate_1, resolve, error_2, _b, aggregate_2, reject;
-            return tslib_1.__generator(this, function (_c) {
-                switch (_c.label) {
-                    case 0:
-                        writeQueue = this.writeQueue;
-                        if (this.isWriteQueueRunning) {
-                            return [2 /*return*/];
-                        }
-                        this.isWriteQueueRunning = true;
-                        _c.label = 1;
-                    case 1:
-                        _c.trys.push([1, , 8, 9]);
-                        _c.label = 2;
-                    case 2:
-                        if (!writeQueue.length) return [3 /*break*/, 7];
-                        aggregate = [];
-                        sink = Buffer.alloc(0);
-                        while (writeQueue.length) {
-                            _a = writeQueue.shift(), buffer = _a.buffer, resolve = _a.resolve, reject = _a.reject;
-                            sink = Buffer.concat([sink, buffer]);
-                            aggregate.push({ resolve: resolve, reject: reject });
-                        }
-                        _c.label = 3;
-                    case 3:
-                        _c.trys.push([3, 5, , 6]);
-                        return [4 /*yield*/, this._write(sink)];
-                    case 4:
-                        _c.sent();
-                        for (_i = 0, aggregate_1 = aggregate; _i < aggregate_1.length; _i++) {
-                            resolve = aggregate_1[_i].resolve;
-                            resolve();
-                        }
-                        return [3 /*break*/, 6];
-                    case 5:
-                        error_2 = _c.sent();
-                        for (_b = 0, aggregate_2 = aggregate; _b < aggregate_2.length; _b++) {
-                            reject = aggregate_2[_b].reject;
-                            reject(error_2);
-                        }
-                        return [3 /*break*/, 6];
-                    case 6: return [3 /*break*/, 2];
-                    case 7: return [3 /*break*/, 9];
-                    case 8:
-                        this.isWriteQueueRunning = false;
-                        return [7 /*endfinally*/];
-                    case 9: return [2 /*return*/];
-                }
-            });
+        return new Promise(function (resolve, reject) {
+            _this._writeQueue.push({ buffer: buffer, resolve: resolve, reject: reject });
+            if (!_this._isQueueRunning) {
+                _this._runWriteQueue();
+            }
         });
     };
-    Port.prototype.write = function (buffer) {
+    Port.prototype.evaluatePayload = function (inputBuffer) {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _this = this;
-            return tslib_1.__generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0: return [4 /*yield*/, new Promise(function (resolve, reject) {
-                            _this.writeQueue.push({ buffer: buffer, resolve: resolve, reject: reject });
-                            if (!_this.isWriteQueueRunning) {
-                                _this.runWriteQueue();
+            var _a, events, callbacks, pendingRequests, serializer, payload, data, token, name, parameters, _b, _c, _d, _e, error_1, token, responseType, data, tokenStr, _f, _g, _h, resolve, reject;
+            return tslib_1.__generator(this, function (_j) {
+                switch (_j.label) {
+                    case 0:
+                        _a = this, events = _a.events, callbacks = _a.callbacks, pendingRequests = _a.pendingRequests, serializer = _a.serializer;
+                        payload = this.parsePayload(inputBuffer);
+                        if (!(payload[0] === PortPayloadType.Raw)) return [3 /*break*/, 2];
+                        data = payload[1];
+                        return [4 /*yield*/, events.emit('data', data)];
+                    case 1:
+                        _j.sent();
+                        return [3 /*break*/, 10];
+                    case 2:
+                        if (!(payload[0] === PortPayloadType.Request)) return [3 /*break*/, 9];
+                        token = payload[1], name = payload[2], parameters = payload[3];
+                        _j.label = 3;
+                    case 3:
+                        _j.trys.push([3, 6, , 8]);
+                        _b = this.writePayload;
+                        _c = [PortPayloadType.Response, token, PortPayloadResponseType.Data];
+                        _e = (_d = serializer).serialize;
+                        return [4 /*yield*/, callbacks[name].apply(callbacks, parameters)];
+                    case 4: return [4 /*yield*/, _b.apply(this, _c.concat([_e.apply(_d, [_j.sent()])]))];
+                    case 5:
+                        _j.sent();
+                        return [3 /*break*/, 8];
+                    case 6:
+                        error_1 = _j.sent();
+                        return [4 /*yield*/, this.writePayload(PortPayloadType.Response, token, PortPayloadResponseType.Error, serializer.serialize(error_1))];
+                    case 7:
+                        _j.sent();
+                        return [3 /*break*/, 8];
+                    case 8: return [3 /*break*/, 10];
+                    case 9:
+                        if (payload[0] === PortPayloadType.Response) {
+                            token = payload[1], responseType = payload[2], data = payload[3];
+                            tokenStr = token.toString('hex');
+                            if (tokenStr in pendingRequests) {
+                                _f = pendingRequests, _g = tokenStr, _h = _f[_g], resolve = _h.resolve, reject = _h.reject;
+                                delete pendingRequests[tokenStr];
+                                if (responseType === PortPayloadResponseType.Data) {
+                                    resolve(serializer.deserialize(data));
+                                }
+                                else if (responseType === PortPayloadResponseType.Error) {
+                                    reject(serializer.deserialize(data));
+                                }
+                                else {
+                                    throw new Error("Unknown response type: 0x".concat(responseType.toString(16)));
+                                }
                             }
-                        })];
-                    case 1: return [2 /*return*/, _a.sent()];
+                        }
+                        _j.label = 10;
+                    case 10: return [2 /*return*/];
                 }
             });
         });
     };
     Port.prototype._init = function () {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, socket, _b, randomBytesSize, blockingEvaluations, delimiter, sink, dataCallback, delimiterIndex, payload, evaluationTask;
-            return tslib_1.__generator(this, function (_c) {
-                switch (_c.label) {
+            var _a, socket, events, blockingEvaluations, bufferSink, dataCallback, waitForData, sizeBuffer, size, dataBuffer;
+            return tslib_1.__generator(this, function (_b) {
+                switch (_b.label) {
                     case 0:
-                        _a = this, socket = _a.socket, _b = _a.options, randomBytesSize = _b.randomBytesSize, blockingEvaluations = _b.blockingEvaluations, delimiter = _a.delimiter;
-                        sink = Buffer.alloc(0);
-                        dataCallback = function () { };
-                        socket.on('data', function (data) {
-                            sink = Buffer.concat([sink, data]);
-                            dataCallback();
+                        _a = this, socket = _a.socket, events = _a.events, blockingEvaluations = _a.options.blockingEvaluations;
+                        bufferSink = Buffer.alloc(0);
+                        waitForData = function () { return new Promise(function (resolve) {
+                            dataCallback = function () {
+                                resolve();
+                                dataCallback = undefined;
+                            };
+                        }); };
+                        socket.on('error', function (error) { return events.emit('error', error); });
+                        socket.on('close', function (hadError) {
+                            dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
+                            events.emit('close', hadError);
                         });
-                        socket.on('close', function () {
-                            dataCallback();
+                        socket.on('data', function (buffer) {
+                            bufferSink = Buffer.concat([bufferSink, buffer]);
+                            dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
+                            events.emit('rawData', buffer);
                         });
-                        _c.label = 1;
+                        _b.label = 1;
                     case 1:
-                        if (!!socket.destroyed) return [3 /*break*/, 9];
-                        if (!!sink.length) return [3 /*break*/, 3];
-                        return [4 /*yield*/, new Promise(function (resolve) { dataCallback = resolve; })];
+                        if (!!socket.destroyed) return [3 /*break*/, 11];
+                        if (!!bufferSink.length) return [3 /*break*/, 3];
+                        return [4 /*yield*/, waitForData()];
                     case 2:
-                        _c.sent();
-                        _c.label = 3;
+                        _b.sent();
+                        _b.label = 3;
                     case 3:
-                        if (!delimiter.remote.length) {
-                            if (sink.length < randomBytesSize) {
-                                return [3 /*break*/, 1];
-                            }
-                            delimiter.remote = sink.slice(0, randomBytesSize);
-                            sink = sink.slice(randomBytesSize);
-                        }
-                        delimiterIndex = void 0;
-                        _c.label = 4;
+                        sizeBuffer = bufferSink.slice(1, 1 + bufferSink[0]);
+                        if (!(sizeBuffer.length !== bufferSink[0])) return [3 /*break*/, 5];
+                        return [4 /*yield*/, waitForData()];
                     case 4:
-                        if (!(sink.length && ((delimiterIndex = sink.indexOf(delimiter.remote)) > -1))) return [3 /*break*/, 7];
-                        payload = sink.slice(0, delimiterIndex);
-                        sink = sink.slice(delimiterIndex + delimiter.remote.length);
-                        if (!payload.length) return [3 /*break*/, 6];
-                        evaluationTask = this.evaluatePayload(payload);
-                        if (!blockingEvaluations) return [3 /*break*/, 6];
-                        return [4 /*yield*/, evaluationTask];
-                    case 5:
-                        _c.sent();
-                        _c.label = 6;
-                    case 6: return [3 /*break*/, 4];
-                    case 7: return [4 /*yield*/, new Promise(function (resolve) { return setTimeout(resolve, 0); })];
-                    case 8:
-                        _c.sent();
+                        _b.sent();
                         return [3 /*break*/, 1];
-                    case 9: return [2 /*return*/];
+                    case 5:
+                        size = Number.parseInt(sizeBuffer.toString('hex'), 16);
+                        dataBuffer = bufferSink.slice(1 + sizeBuffer.length, 1 + sizeBuffer.length + size);
+                        if (!(dataBuffer.length !== size)) return [3 /*break*/, 7];
+                        return [4 /*yield*/, waitForData()];
+                    case 6:
+                        _b.sent();
+                        return [3 /*break*/, 1];
+                    case 7:
+                        bufferSink = bufferSink.slice(1 + sizeBuffer.length + size);
+                        if (!blockingEvaluations) return [3 /*break*/, 9];
+                        return [4 /*yield*/, this.evaluatePayload(dataBuffer)
+                                .catch(function (error) { return events.emit('error', error); })];
+                    case 8:
+                        _b.sent();
+                        return [3 /*break*/, 10];
+                    case 9:
+                        this.evaluatePayload(dataBuffer)
+                            .catch(function (error) { return events.emit('error', error); });
+                        _b.label = 10;
+                    case 10: return [3 /*break*/, 1];
+                    case 11: return [2 /*return*/];
                 }
             });
         });
