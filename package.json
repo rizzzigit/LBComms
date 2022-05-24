@@ -28,6 +28,7 @@
     "typescript": "^4.6.3"
   },
   "dependencies": {
+    "@rizzzi/eventemitter": "github:rizzzigit/EventEmitter",
     "@rizzzi/lb-serializer": "github:rizzzigit/LBSerializer",
     "tslib": "^2.4.0"
   }
