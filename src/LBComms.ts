@@ -60,13 +60,16 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     this._isQueueRunning = false
     this._writeQueue = []
 
+    if (this.options.key) {
+      this.setKey(this.options.key)
+    }
+
     this._init()
   }
 
   public readonly options: PortOptions
   public readonly socket: Net.Socket
   public readonly serializer: LBSerializer.Serializer
-  public readonly key?: Buffer
   public readonly callbacks: PortCallbackMap<LocalInterface>
   public readonly events: EventEmitter<PortEvents>
   public readonly pendingRequests: {
@@ -106,6 +109,20 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
 
   public execLocal <K extends keyof LocalInterface> (name: K, ...parameters: LocalInterface[K][0]): Promise<LocalInterface[K][1]> {
     return this.callbacks[name](...parameters)
+  }
+
+  public key?: Buffer
+
+  public setKey (key: string) {
+    if (key.length !== 64) {
+      throw new Error('Invalid key length')
+    }
+
+    this.key = Buffer.from(key, 'hex')
+  }
+
+  public getKey () {
+    return this.key?.toString('hex')
   }
 
   public encryptPayload (inputBuffer: Buffer) {

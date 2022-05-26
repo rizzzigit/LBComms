@@ -26,6 +26,9 @@ var Port = /** @class */ (function () {
         this.pendingRequests = {};
         this._isQueueRunning = false;
         this._writeQueue = [];
+        if (this.options.key) {
+            this.setKey(this.options.key);
+        }
         this._init();
     }
     Port.prototype.writePayload = function () {
@@ -66,6 +69,16 @@ var Port = /** @class */ (function () {
             parameters[_i - 1] = arguments[_i];
         }
         return (_a = this.callbacks)[name].apply(_a, parameters);
+    };
+    Port.prototype.setKey = function (key) {
+        if (key.length !== 64) {
+            throw new Error('Invalid key length');
+        }
+        this.key = Buffer.from(key, 'hex');
+    };
+    Port.prototype.getKey = function () {
+        var _a;
+        return (_a = this.key) === null || _a === void 0 ? void 0 : _a.toString('hex');
     };
     Port.prototype.encryptPayload = function (inputBuffer) {
         var key = this.key;
