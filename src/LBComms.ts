@@ -161,14 +161,14 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     ]
   }
 
-  public _isQueueRunning: boolean
-  public readonly _writeQueue: Array<{
+  private _isQueueRunning: boolean
+  private readonly _writeQueue: Array<{
     buffer: Buffer
     resolve: () => void
     reject: (error: Error) => void
   }>
 
-  public async _runWriteQueue () {
+  private async _runWriteQueue () {
     const { _writeQueue: writeQueue, socket } = this
 
     if (this._isQueueRunning) {
@@ -182,9 +182,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       const rejects: Array<(error: Error) => void> = []
 
       while (writeQueue.length) {
-        const entry = writeQueue.shift()
-        if (!entry) { break }
-
+        const entry = <typeof writeQueue[0]> writeQueue.shift()
         const sizeBuffer = Buffer.from(((hex) => hex.length % 2 ? `0${hex}` : hex)(entry.buffer.length.toString(16)), 'hex')
 
         buffers.push(Buffer.from([sizeBuffer.length]), sizeBuffer, entry.buffer)
@@ -192,7 +190,8 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
         rejects.push(entry.reject)
       }
 
-      await new Promise<void>((resolve, reject) => socket.write(Buffer.concat(buffers), (error) => error ? reject(error) : resolve()))
+      const concat = Buffer.concat(buffers)
+      await new Promise<void>((resolve, reject) => socket.write(concat, (error) => error ? reject(error) : resolve()))
         .then(() => resolves.forEach((f) => f()))
         .catch((error) => rejects.forEach((f) => f(error)))
     } finally {
@@ -200,7 +199,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     }
   }
 
-  public _write (buffer: Buffer) {
+  private _write (buffer: Buffer) {
     return new Promise<void>((resolve, reject) => {
       this._writeQueue.push({ buffer, resolve, reject })
       if (!this._isQueueRunning) {
@@ -242,7 +241,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     }
   }
 
-  public async _init () {
+  private async _init () {
     const { socket, events, options: { blockingEvaluations } } = this
 
     let bufferSink = Buffer.alloc(0)

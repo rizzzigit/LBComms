@@ -110,7 +110,7 @@ var Port = /** @class */ (function () {
     };
     Port.prototype._runWriteQueue = function () {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, writeQueue, socket, buffers_1, resolves_1, rejects_1, entry, sizeBuffer;
+            var _a, writeQueue, socket, buffers, resolves_1, rejects_1, entry, sizeBuffer, concat_1;
             return tslib_1.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
@@ -122,20 +122,18 @@ var Port = /** @class */ (function () {
                         _b.label = 1;
                     case 1:
                         _b.trys.push([1, , 3, 4]);
-                        buffers_1 = [];
+                        buffers = [];
                         resolves_1 = [];
                         rejects_1 = [];
                         while (writeQueue.length) {
                             entry = writeQueue.shift();
-                            if (!entry) {
-                                break;
-                            }
                             sizeBuffer = Buffer.from((function (hex) { return hex.length % 2 ? "0".concat(hex) : hex; })(entry.buffer.length.toString(16)), 'hex');
-                            buffers_1.push(Buffer.from([sizeBuffer.length]), sizeBuffer, entry.buffer);
+                            buffers.push(Buffer.from([sizeBuffer.length]), sizeBuffer, entry.buffer);
                             resolves_1.push(entry.resolve);
                             rejects_1.push(entry.reject);
                         }
-                        return [4 /*yield*/, new Promise(function (resolve, reject) { return socket.write(Buffer.concat(buffers_1), function (error) { return error ? reject(error) : resolve(); }); })
+                        concat_1 = Buffer.concat(buffers);
+                        return [4 /*yield*/, new Promise(function (resolve, reject) { return socket.write(concat_1, function (error) { return error ? reject(error) : resolve(); }); })
                                 .then(function () { return resolves_1.forEach(function (f) { return f(); }); })
                                 .catch(function (error) { return rejects_1.forEach(function (f) { return f(error); }); })];
                     case 2:

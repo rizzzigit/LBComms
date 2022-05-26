@@ -53,14 +53,10 @@ export declare class Port<LocalInterface extends PortInterface, RemoteInterface 
     decryptPayload(inputBuffer: Buffer): Buffer;
     buildPayload(inputPayload: PortPayload): Buffer;
     parsePayload(inputBuffer: Buffer): PortPayload;
-    _isQueueRunning: boolean;
-    readonly _writeQueue: Array<{
-        buffer: Buffer;
-        resolve: () => void;
-        reject: (error: Error) => void;
-    }>;
-    _runWriteQueue(): Promise<void>;
-    _write(buffer: Buffer): Promise<void>;
+    private _isQueueRunning;
+    private readonly _writeQueue;
+    private _runWriteQueue;
+    private _write;
     evaluatePayload(inputBuffer: Buffer): Promise<void>;
-    _init(): Promise<void>;
+    private _init;
 }
