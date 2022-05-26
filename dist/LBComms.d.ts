@@ -49,6 +49,7 @@ export declare class Port<LocalInterface extends PortInterface, RemoteInterface 
     writePayload(...payload: PortPayload): Promise<void>;
     write(data: any): void;
     exec<K extends keyof RemoteInterface>(name: K, ...parameters: RemoteInterface[K][0]): Promise<RemoteInterface[K][1]>;
+    execLocal<K extends keyof LocalInterface>(name: K, ...parameters: LocalInterface[K][0]): Promise<LocalInterface[K][1]>;
     encryptPayload(inputBuffer: Buffer): Buffer;
     decryptPayload(inputBuffer: Buffer): Buffer;
     buildPayload(inputPayload: PortPayload): Buffer;

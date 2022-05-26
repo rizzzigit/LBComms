@@ -59,6 +59,14 @@ var Port = /** @class */ (function () {
                 .catch(reject);
         });
     };
+    Port.prototype.execLocal = function (name) {
+        var _a;
+        var parameters = [];
+        for (var _i = 1; _i < arguments.length; _i++) {
+            parameters[_i - 1] = arguments[_i];
+        }
+        return (_a = this.callbacks)[name].apply(_a, parameters);
+    };
     Port.prototype.encryptPayload = function (inputBuffer) {
         var key = this.key;
         if (key) {
@@ -158,11 +166,11 @@ var Port = /** @class */ (function () {
     };
     Port.prototype.evaluatePayload = function (inputBuffer) {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, events, callbacks, pendingRequests, serializer, payload, data, token, name, parameters, _b, _c, _d, _e, error_1, token, responseType, data, tokenStr, _f, _g, _h, resolve, reject;
+            var _a, events, pendingRequests, serializer, payload, data, token, name, parameters, _b, _c, _d, _e, error_1, token, responseType, data, tokenStr, _f, _g, _h, resolve, reject;
             return tslib_1.__generator(this, function (_j) {
                 switch (_j.label) {
                     case 0:
-                        _a = this, events = _a.events, callbacks = _a.callbacks, pendingRequests = _a.pendingRequests, serializer = _a.serializer;
+                        _a = this, events = _a.events, pendingRequests = _a.pendingRequests, serializer = _a.serializer;
                         payload = this.parsePayload(inputBuffer);
                         if (!(payload[0] === PortPayloadType.Raw)) return [3 /*break*/, 2];
                         data = payload[1];
@@ -179,7 +187,7 @@ var Port = /** @class */ (function () {
                         _b = this.writePayload;
                         _c = [PortPayloadType.Response, token, PortPayloadResponseType.Data];
                         _e = (_d = serializer).serialize;
-                        return [4 /*yield*/, callbacks[name].apply(callbacks, parameters)];
+                        return [4 /*yield*/, this.execLocal.apply(this, tslib_1.__spreadArray([name], parameters, false))];
                     case 4: return [4 /*yield*/, _b.apply(this, _c.concat([_e.apply(_d, [_j.sent()])]))];
                     case 5:
                         _j.sent();

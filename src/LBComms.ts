@@ -104,6 +104,10 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     })
   }
 
+  public execLocal <K extends keyof LocalInterface> (name: K, ...parameters: LocalInterface[K][0]): Promise<LocalInterface[K][1]> {
+    return this.callbacks[name](...parameters)
+  }
+
   public encryptPayload (inputBuffer: Buffer) {
     const { key } = this
 
@@ -209,7 +213,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
   }
 
   public async evaluatePayload (inputBuffer: Buffer) {
-    const { events, callbacks, pendingRequests, serializer } = this
+    const { events, pendingRequests, serializer } = this
     const payload = this.parsePayload(inputBuffer)
 
     if (payload[0] === PortPayloadType.Raw) {
@@ -218,7 +222,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     } else if (payload[0] === PortPayloadType.Request) {
       const [, token, name, parameters] = payload
       try {
-        await this.writePayload(PortPayloadType.Response, token, PortPayloadResponseType.Data, serializer.serialize(await callbacks[name](...parameters)))
+        await this.writePayload(PortPayloadType.Response, token, PortPayloadResponseType.Data, serializer.serialize(await this.execLocal(name, ...parameters)))
       } catch (error) {
         await this.writePayload(PortPayloadType.Response, token, PortPayloadResponseType.Error, serializer.serialize(error))
       }
