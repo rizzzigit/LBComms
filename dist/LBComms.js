@@ -70,6 +70,44 @@ var Port = /** @class */ (function () {
         }
         return (_a = this.callbacks)[name].apply(_a, parameters);
     };
+    Port.prototype.ping = function (pass) {
+        if (pass === void 0) { pass = 1; }
+        return tslib_1.__awaiter(this, void 0, void 0, function () {
+            var ms, currentPass, timeDifference;
+            var _this = this;
+            return tslib_1.__generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        if ((pass < 1) || (pass > 100)) {
+                            throw new Error("Pass is ".concat(pass, " instead of any number from 1 and 100"));
+                        }
+                        ms = 0;
+                        currentPass = 1;
+                        _a.label = 1;
+                    case 1:
+                        if (!(pass >= currentPass)) return [3 /*break*/, 4];
+                        return [4 /*yield*/, (function () { return tslib_1.__awaiter(_this, void 0, void 0, function () {
+                                return tslib_1.__generator(this, function (_a) {
+                                    switch (_a.label) {
+                                        case 0: return [4 /*yield*/, this.exec('__np')];
+                                        case 1:
+                                            _a.sent();
+                                            return [2 /*return*/, Date.now()];
+                                    }
+                                });
+                            }); })()];
+                    case 2:
+                        timeDifference = (_a.sent()) - Date.now();
+                        ms = (ms + timeDifference) / currentPass;
+                        _a.label = 3;
+                    case 3:
+                        currentPass++;
+                        return [3 /*break*/, 1];
+                    case 4: return [2 /*return*/, ms];
+                }
+            });
+        });
+    };
     Port.prototype.setKey = function (key) {
         if (key.length !== 64) {
             throw new Error('Invalid key length');

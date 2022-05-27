@@ -49,6 +49,7 @@ export declare class Port<LocalInterface extends PortInterface, RemoteInterface 
     write(data: any): void;
     exec<K extends keyof RemoteInterface>(name: K, ...parameters: RemoteInterface[K][0]): Promise<RemoteInterface[K][1]>;
     execLocal<K extends keyof LocalInterface>(name: K, ...parameters: LocalInterface[K][0]): Promise<LocalInterface[K][1]>;
+    ping(pass?: number): Promise<number>;
     key?: Buffer;
     setKey(key: string): void;
     getKey(): string | undefined;

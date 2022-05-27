@@ -111,6 +111,25 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     return this.callbacks[name](...parameters)
   }
 
+  public async ping (pass: number = 1) {
+    if ((pass < 1) || (pass > 100)) {
+      throw new Error(`Pass is ${pass} instead of any number from 1 and 100`)
+    }
+
+    let ms = 0
+    for (let currentPass = 1; pass >= currentPass; currentPass++) {
+      const timeDifference = (await (async () => {
+        await this.exec('__np')
+
+        return Date.now()
+      })()) - Date.now()
+
+      ms = (ms + timeDifference) / currentPass
+    }
+
+    return ms
+  }
+
   public key?: Buffer
 
   public setKey (key: string) {
