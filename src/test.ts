@@ -18,7 +18,7 @@ if (process.argv.length <= 3) {
       read: (size) => new Promise<Buffer>((resolve, reject) => Crypto.randomBytes(size, (error, buffer) => error ? reject(error) : resolve(buffer)))
     }, {
       key,
-      blockingEvaluations: true
+      blockingExecutions: true
     })
   }).listen(Number(process.argv[2]))
 } else {

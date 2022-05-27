@@ -13,7 +13,7 @@ if (process.argv.length <= 3) {
             read: function (size) { return new Promise(function (resolve, reject) { return crypto_1.default.randomBytes(size, function (error, buffer) { return error ? reject(error) : resolve(buffer); }); }); }
         }, {
             key: key,
-            blockingEvaluations: true
+            blockingExecutions: true
         });
     }).listen(Number(process.argv[2]));
 }

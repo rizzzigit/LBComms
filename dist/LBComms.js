@@ -18,7 +18,7 @@ var PortPayloadResponseType;
 })(PortPayloadResponseType = exports.PortPayloadResponseType || (exports.PortPayloadResponseType = {}));
 var Port = /** @class */ (function () {
     function Port(socket, callbacks, options) {
-        this.options = tslib_1.__assign({ blockingEvaluations: false }, options);
+        this.options = tslib_1.__assign({ blockingExecutions: false }, options);
         this.serializer = new lb_serializer_1.default.Serializer();
         this.socket = socket;
         this.callbacks = tslib_1.__assign(tslib_1.__assign({}, callbacks), { _np: function () { } });
@@ -215,7 +215,7 @@ var Port = /** @class */ (function () {
             }
         });
     };
-    Port.prototype.evaluatePayload = function (inputBuffer) {
+    Port.prototype.executePayload = function (inputBuffer) {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
             var _a, events, pendingRequests, serializer, payload, data, token, name, parameters, _b, _c, _d, _e, error_1, token, responseType, data, tokenStr, _f, _g, _h, resolve, reject;
             return tslib_1.__generator(this, function (_j) {
@@ -276,11 +276,11 @@ var Port = /** @class */ (function () {
     };
     Port.prototype._init = function () {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, socket, events, blockingEvaluations, bufferSink, dataCallback, waitForData, sizeBuffer, size, dataBuffer;
+            var _a, socket, events, blockingExecutions, bufferSink, dataCallback, waitForData, sizeBuffer, size, dataBuffer;
             return tslib_1.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
-                        _a = this, socket = _a.socket, events = _a.events, blockingEvaluations = _a.options.blockingEvaluations;
+                        _a = this, socket = _a.socket, events = _a.events, blockingExecutions = _a.options.blockingExecutions;
                         bufferSink = Buffer.alloc(0);
                         waitForData = function () { return new Promise(function (resolve) {
                             dataCallback = function () {
@@ -323,14 +323,14 @@ var Port = /** @class */ (function () {
                         return [3 /*break*/, 1];
                     case 7:
                         bufferSink = bufferSink.slice(1 + sizeBuffer.length + size);
-                        if (!blockingEvaluations) return [3 /*break*/, 9];
-                        return [4 /*yield*/, this.evaluatePayload(dataBuffer)
+                        if (!blockingExecutions) return [3 /*break*/, 9];
+                        return [4 /*yield*/, this.executePayload(dataBuffer)
                                 .catch(function (error) { return events.emit('error', error); })];
                     case 8:
                         _b.sent();
                         return [3 /*break*/, 10];
                     case 9:
-                        this.evaluatePayload(dataBuffer)
+                        this.executePayload(dataBuffer)
                             .catch(function (error) { return events.emit('error', error); });
                         _b.label = 10;
                     case 10: return [3 /*break*/, 1];

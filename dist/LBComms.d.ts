@@ -15,7 +15,7 @@ export declare type PortCallbackMap<Interface extends PortInterface> = {
 };
 export interface PortOptions {
     key?: string;
-    blockingEvaluations: boolean;
+    blockingExecutions: boolean;
 }
 export declare enum PortPayloadResponseType {
     Data = 0,
@@ -61,6 +61,6 @@ export declare class Port<LocalInterface extends PortInterface, RemoteInterface 
     private readonly _writeQueue;
     private _runWriteQueue;
     private _write;
-    evaluatePayload(inputBuffer: Buffer): Promise<void>;
+    executePayload(inputBuffer: Buffer): Promise<void>;
     private _init;
 }

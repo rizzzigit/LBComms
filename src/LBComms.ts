@@ -19,7 +19,7 @@ export type PortCallbackMap<Interface extends PortInterface> = {
 
 export interface PortOptions {
   key?: string
-  blockingEvaluations: boolean
+  blockingExecutions: boolean
 }
 
 export enum PortPayloadResponseType {
@@ -46,7 +46,7 @@ export type PortPayload =
 export class Port<LocalInterface extends PortInterface, RemoteInterface extends PortInterface> {
   public constructor (socket: Net.Socket, callbacks: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>) {
     this.options = {
-      blockingEvaluations: false,
+      blockingExecutions: false,
       ...options
     }
     this.serializer = new LBSerializer.Serializer()
@@ -248,7 +248,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     })
   }
 
-  public async evaluatePayload (inputBuffer: Buffer) {
+  public async executePayload (inputBuffer: Buffer) {
     const { events, pendingRequests, serializer } = this
     const payload = this.parsePayload(inputBuffer)
 
@@ -282,7 +282,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
   }
 
   private async _init () {
-    const { socket, events, options: { blockingEvaluations } } = this
+    const { socket, events, options: { blockingExecutions } } = this
 
     let bufferSink = Buffer.alloc(0)
     let dataCallback: (() => void) | undefined
@@ -322,11 +322,11 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       }
       bufferSink = bufferSink.slice(1 + sizeBuffer.length + size)
 
-      if (blockingEvaluations) {
-        await this.evaluatePayload(dataBuffer)
+      if (blockingExecutions) {
+        await this.executePayload(dataBuffer)
           .catch((error) => events.emit('error', error))
       } else {
-        this.evaluatePayload(dataBuffer)
+        this.executePayload(dataBuffer)
           .catch((error) => events.emit('error', error))
       }
     }
