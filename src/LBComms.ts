@@ -174,7 +174,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       const initializationVector = inputBuffer.slice(1, 17)
       const decipher = Crypto.createDecipheriv('aes256', key, initializationVector)
 
-      return Buffer.concat([decipher.update(inputBuffer), decipher.final()])
+      return Buffer.concat([decipher.update(inputBuffer.slice(17)), decipher.final()])
     } else {
       return inputBuffer.slice(1)
     }

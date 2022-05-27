@@ -5,7 +5,7 @@ var net_1 = tslib_1.__importDefault(require("net"));
 var crypto_1 = tslib_1.__importDefault(require("crypto"));
 var _1 = require(".");
 var time = function () { return Math.round(Date.now() / 1000); };
-var key = crypto_1.default.randomBytes(32).toString('hex');
+var key = '0'.repeat(64);
 if (process.argv.length <= 3) {
     net_1.default.createServer(function (socket) {
         var port = new _1.Port(socket, {

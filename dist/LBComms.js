@@ -145,7 +145,7 @@ var Port = /** @class */ (function () {
             }
             var initializationVector = inputBuffer.slice(1, 17);
             var decipher = crypto_1.default.createDecipheriv('aes256', key, initializationVector);
-            return Buffer.concat([decipher.update(inputBuffer), decipher.final()]);
+            return Buffer.concat([decipher.update(inputBuffer.slice(17)), decipher.final()]);
         }
         else {
             return inputBuffer.slice(1);

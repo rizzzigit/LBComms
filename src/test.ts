@@ -9,7 +9,7 @@ interface CTest extends PortInterface {
 }
 
 const time = () => Math.round(Date.now() / 1000)
-const key = Crypto.randomBytes(32).toString('hex')
+const key = '0'.repeat(64)
 
 if (process.argv.length <= 3) {
   Net.createServer((socket) => {
