@@ -119,7 +119,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     let ms = 0
     for (let currentPass = 1; pass >= currentPass; currentPass++) {
       const timeDifference = (await (async () => {
-        await this.exec('__np')
+        await this.exec('_np')
 
         return Date.now()
       })()) - Date.now()

@@ -89,7 +89,7 @@ var Port = /** @class */ (function () {
                         return [4 /*yield*/, (function () { return tslib_1.__awaiter(_this, void 0, void 0, function () {
                                 return tslib_1.__generator(this, function (_a) {
                                     switch (_a.label) {
-                                        case 0: return [4 /*yield*/, this.exec('__np')];
+                                        case 0: return [4 /*yield*/, this.exec('_np')];
                                         case 1:
                                             _a.sent();
                                             return [2 /*return*/, Date.now()];
