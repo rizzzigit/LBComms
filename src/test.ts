@@ -49,6 +49,10 @@ if (process.argv.length <= 3) {
           resCount = 0
           await new Promise<void>((resolve) => setTimeout(resolve, 1000))
         }
+      },
+      async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 10000))
+        await port.destroy()
       }
     ].map((f) => f()))
   })

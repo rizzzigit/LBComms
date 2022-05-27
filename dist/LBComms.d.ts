@@ -62,5 +62,7 @@ export declare class Port<LocalInterface extends PortInterface, RemoteInterface 
     private _runWriteQueue;
     private _write;
     executePayload(inputBuffer: Buffer): Promise<void>;
+    private destroyExpected;
+    destroy(error?: Error): Promise<void>;
     private _init;
 }

@@ -18,10 +18,14 @@ var PortPayloadResponseType;
 })(PortPayloadResponseType = exports.PortPayloadResponseType || (exports.PortPayloadResponseType = {}));
 var Port = /** @class */ (function () {
     function Port(socket, callbacks, options) {
+        var _this = this;
         this.options = tslib_1.__assign({ blockingExecutions: false }, options);
         this.serializer = new lb_serializer_1.default.Serializer();
         this.socket = socket;
-        this.callbacks = tslib_1.__assign(tslib_1.__assign({}, callbacks), { _np: function () { } });
+        this.callbacks = tslib_1.__assign(tslib_1.__assign({}, callbacks), { _np: function () { }, _d: function () {
+                _this.destroyExpected = true;
+                _this.socket.destroy();
+            } });
         this.events = new eventemitter_1.default({ requireErrorHandling: true });
         this.pendingRequests = {};
         this._isQueueRunning = false;
@@ -29,6 +33,7 @@ var Port = /** @class */ (function () {
         if (this.options.key) {
             this.setKey(this.options.key);
         }
+        this.destroyExpected = false;
         this._init();
     }
     Port.prototype.writePayload = function () {
@@ -209,6 +214,9 @@ var Port = /** @class */ (function () {
     Port.prototype._write = function (buffer) {
         var _this = this;
         return new Promise(function (resolve, reject) {
+            if (_this.socket.destroyed) {
+                throw new Error('Socket is closed');
+            }
             _this._writeQueue.push({ buffer: buffer, resolve: resolve, reject: reject });
             if (!_this._isQueueRunning) {
                 _this._runWriteQueue();
@@ -217,9 +225,9 @@ var Port = /** @class */ (function () {
     };
     Port.prototype.executePayload = function (inputBuffer) {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, events, pendingRequests, serializer, payload, data, token, name, parameters, _b, _c, _d, _e, error_1, token, responseType, data, tokenStr, _f, _g, _h, resolve, reject;
-            return tslib_1.__generator(this, function (_j) {
-                switch (_j.label) {
+            var _a, events, pendingRequests, serializer, payload, data, token, name, parameters, _b, _c, _e, _f, error_1, token, responseType, data, tokenStr, _g, _h, _j, resolve, reject;
+            return tslib_1.__generator(this, function (_k) {
+                switch (_k.label) {
                     case 0:
                         _a = this, events = _a.events, pendingRequests = _a.pendingRequests, serializer = _a.serializer;
                         payload = this.parsePayload(inputBuffer);
@@ -227,27 +235,27 @@ var Port = /** @class */ (function () {
                         data = payload[1];
                         return [4 /*yield*/, events.emit('data', data)];
                     case 1:
-                        _j.sent();
+                        _k.sent();
                         return [3 /*break*/, 10];
                     case 2:
                         if (!(payload[0] === PortPayloadType.Request)) return [3 /*break*/, 9];
                         token = payload[1], name = payload[2], parameters = payload[3];
-                        _j.label = 3;
+                        _k.label = 3;
                     case 3:
-                        _j.trys.push([3, 6, , 8]);
+                        _k.trys.push([3, 6, , 8]);
                         _b = this.writePayload;
                         _c = [PortPayloadType.Response, token, PortPayloadResponseType.Data];
-                        _e = (_d = serializer).serialize;
+                        _f = (_e = serializer).serialize;
                         return [4 /*yield*/, this.execLocal.apply(this, tslib_1.__spreadArray([name], parameters, false))];
-                    case 4: return [4 /*yield*/, _b.apply(this, _c.concat([_e.apply(_d, [_j.sent()])]))];
+                    case 4: return [4 /*yield*/, _b.apply(this, _c.concat([_f.apply(_e, [_k.sent()])]))];
                     case 5:
-                        _j.sent();
+                        _k.sent();
                         return [3 /*break*/, 8];
                     case 6:
-                        error_1 = _j.sent();
+                        error_1 = _k.sent();
                         return [4 /*yield*/, this.writePayload(PortPayloadType.Response, token, PortPayloadResponseType.Error, serializer.serialize(error_1))];
                     case 7:
-                        _j.sent();
+                        _k.sent();
                         return [3 /*break*/, 8];
                     case 8: return [3 /*break*/, 10];
                     case 9:
@@ -255,7 +263,7 @@ var Port = /** @class */ (function () {
                             token = payload[1], responseType = payload[2], data = payload[3];
                             tokenStr = token.toString('hex');
                             if (tokenStr in pendingRequests) {
-                                _f = pendingRequests, _g = tokenStr, _h = _f[_g], resolve = _h.resolve, reject = _h.reject;
+                                _g = pendingRequests, _h = tokenStr, _j = _g[_h], resolve = _j.resolve, reject = _j.reject;
                                 delete pendingRequests[tokenStr];
                                 if (responseType === PortPayloadResponseType.Data) {
                                     resolve(serializer.deserialize(data));
@@ -268,27 +276,60 @@ var Port = /** @class */ (function () {
                                 }
                             }
                         }
-                        _j.label = 10;
+                        _k.label = 10;
                     case 10: return [2 /*return*/];
+                }
+            });
+        });
+    };
+    Port.prototype.destroy = function (error) {
+        return tslib_1.__awaiter(this, void 0, void 0, function () {
+            return tslib_1.__generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        if (!error) return [3 /*break*/, 1];
+                        this.socket.destroy(error);
+                        return [3 /*break*/, 3];
+                    case 1:
+                        this.destroyExpected = true;
+                        return [4 /*yield*/, this.exec('_d')];
+                    case 2:
+                        _a.sent();
+                        _a.label = 3;
+                    case 3: return [2 /*return*/];
                 }
             });
         });
     };
     Port.prototype._init = function () {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, socket, events, blockingExecutions, bufferSink, dataCallback, waitForData, sizeBuffer, size, dataBuffer;
-            return tslib_1.__generator(this, function (_b) {
-                switch (_b.label) {
+            var _a, socket, events, blockingExecutions, pendingRequests, bufferSink, dataCallback, waitForData, sizeBuffer, size, dataBuffer, tokenStr, _b, _c, reject;
+            var _this = this;
+            return tslib_1.__generator(this, function (_e) {
+                switch (_e.label) {
                     case 0:
-                        _a = this, socket = _a.socket, events = _a.events, blockingExecutions = _a.options.blockingExecutions;
+                        _a = this, socket = _a.socket, events = _a.events, blockingExecutions = _a.options.blockingExecutions, pendingRequests = _a.pendingRequests;
                         bufferSink = Buffer.alloc(0);
-                        waitForData = function () { return new Promise(function (resolve) {
-                            dataCallback = function () {
-                                resolve();
-                                dataCallback = undefined;
-                            };
+                        waitForData = function () { return tslib_1.__awaiter(_this, void 0, void 0, function () {
+                            return tslib_1.__generator(this, function (_a) {
+                                switch (_a.label) {
+                                    case 0:
+                                        if (this.destroyExpected || socket.destroyed) {
+                                            return [2 /*return*/];
+                                        }
+                                        return [4 /*yield*/, new Promise(function (resolve) {
+                                                dataCallback = function () {
+                                                    resolve();
+                                                    dataCallback = undefined;
+                                                };
+                                            })];
+                                    case 1:
+                                        _a.sent();
+                                        return [2 /*return*/];
+                                }
+                            });
                         }); };
-                        socket.on('error', function (error) { return events.emit('error', error); });
+                        socket.on('error', function (error) { return (!_this.destroyExpected) && events.emit('error', error); });
                         socket.on('close', function (hadError) {
                             dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
                             events.emit('close', hadError);
@@ -298,20 +339,20 @@ var Port = /** @class */ (function () {
                             dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
                             events.emit('rawData', buffer);
                         });
-                        _b.label = 1;
+                        _e.label = 1;
                     case 1:
-                        if (!!socket.destroyed) return [3 /*break*/, 11];
+                        if (!((!socket.destroyed) && (!this.destroyExpected))) return [3 /*break*/, 11];
                         if (!!bufferSink.length) return [3 /*break*/, 3];
                         return [4 /*yield*/, waitForData()];
                     case 2:
-                        _b.sent();
-                        _b.label = 3;
+                        _e.sent();
+                        _e.label = 3;
                     case 3:
                         sizeBuffer = bufferSink.slice(1, 1 + bufferSink[0]);
                         if (!(sizeBuffer.length !== bufferSink[0])) return [3 /*break*/, 5];
                         return [4 /*yield*/, waitForData()];
                     case 4:
-                        _b.sent();
+                        _e.sent();
                         return [3 /*break*/, 1];
                     case 5:
                         size = Number.parseInt(sizeBuffer.toString('hex'), 16);
@@ -319,7 +360,7 @@ var Port = /** @class */ (function () {
                         if (!(dataBuffer.length !== size)) return [3 /*break*/, 7];
                         return [4 /*yield*/, waitForData()];
                     case 6:
-                        _b.sent();
+                        _e.sent();
                         return [3 /*break*/, 1];
                     case 7:
                         bufferSink = bufferSink.slice(1 + sizeBuffer.length + size);
@@ -327,14 +368,20 @@ var Port = /** @class */ (function () {
                         return [4 /*yield*/, this.executePayload(dataBuffer)
                                 .catch(function (error) { return events.emit('error', error); })];
                     case 8:
-                        _b.sent();
+                        _e.sent();
                         return [3 /*break*/, 10];
                     case 9:
                         this.executePayload(dataBuffer)
                             .catch(function (error) { return events.emit('error', error); });
-                        _b.label = 10;
+                        _e.label = 10;
                     case 10: return [3 /*break*/, 1];
-                    case 11: return [2 /*return*/];
+                    case 11:
+                        for (tokenStr in pendingRequests) {
+                            _b = pendingRequests, _c = tokenStr, reject = _b[_c].reject;
+                            delete pendingRequests[tokenStr];
+                            reject(new Error('Socket is closed'));
+                        }
+                        return [2 /*return*/];
                 }
             });
         });

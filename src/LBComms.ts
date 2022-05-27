@@ -53,7 +53,11 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     this.socket = socket
     this.callbacks = {
       ...callbacks,
-      _np: () => {}
+      _np: () => {},
+      _d: () => {
+        this.destroyExpected = true
+        this.socket.destroy()
+      }
     }
     this.events = new EventEmitter({ requireErrorHandling: true })
     this.pendingRequests = {}
@@ -63,6 +67,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     if (this.options.key) {
       this.setKey(this.options.key)
     }
+    this.destroyExpected = false
 
     this._init()
   }
@@ -241,6 +246,10 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
 
   private _write (buffer: Buffer) {
     return new Promise<void>((resolve, reject) => {
+      if (this.socket.destroyed) {
+        throw new Error('Socket is closed')
+      }
+
       this._writeQueue.push({ buffer, resolve, reject })
       if (!this._isQueueRunning) {
         this._runWriteQueue()
@@ -281,19 +290,36 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     }
   }
 
+  private destroyExpected: boolean
+
+  public async destroy (error?: Error) {
+    if (error) {
+      this.socket.destroy(error)
+    } else {
+      this.destroyExpected = true
+      await this.exec('_d')
+    }
+  }
+
   private async _init () {
-    const { socket, events, options: { blockingExecutions } } = this
+    const { socket, events, options: { blockingExecutions }, pendingRequests } = this
 
     let bufferSink = Buffer.alloc(0)
     let dataCallback: (() => void) | undefined
-    const waitForData = () => new Promise<void>((resolve) => {
-      dataCallback = () => {
-        resolve()
-        dataCallback = undefined
+    const waitForData = async () => {
+      if (this.destroyExpected || socket.destroyed) {
+        return
       }
-    })
 
-    socket.on('error', (error) => events.emit('error', error))
+      await new Promise<void>((resolve) => {
+        dataCallback = () => {
+          resolve()
+          dataCallback = undefined
+        }
+      })
+    }
+
+    socket.on('error', (error) => (!this.destroyExpected) && events.emit('error', error))
     socket.on('close', (hadError) => {
       dataCallback?.()
       events.emit('close', hadError)
@@ -304,7 +330,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       events.emit('rawData', buffer)
     })
 
-    while (!socket.destroyed) {
+    while ((!socket.destroyed) && (!this.destroyExpected)) {
       if (!bufferSink.length) {
         await waitForData()
       }
@@ -329,6 +355,13 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
         this.executePayload(dataBuffer)
           .catch((error) => events.emit('error', error))
       }
+    }
+
+    for (const tokenStr in pendingRequests) {
+      const { [tokenStr]: { reject } } = pendingRequests
+      delete pendingRequests[tokenStr]
+
+      reject(new Error('Socket is closed'))
     }
   }
 }
