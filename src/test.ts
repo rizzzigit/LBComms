@@ -5,7 +5,8 @@ import { Port, PortInterface } from '.'
 
 interface CTest extends PortInterface {
   echo: [args: [arg0: any], returns: any], // Returns the 1st parameter
-  read: [args: [size: number], returns: Promise<Buffer>] // Returns random bytes
+  read: [args: [size: number], returns: Promise<Buffer>], // Returns random bytes
+  error: [args: [message?: string], returns: void] // throws an error
 }
 
 const time = () => Math.round(Date.now() / 1000)
@@ -13,9 +14,10 @@ const key = '0'.repeat(64)
 
 if (process.argv.length <= 3) {
   Net.createServer((socket) => {
-    const port = new Port<CTest, {}>(socket, {
+    Port.new<CTest, {}>(socket, {
       echo: (arg0) => arg0, // Implementations for PortInterface defined above,
-      read: (size) => new Promise<Buffer>((resolve, reject) => Crypto.randomBytes(size, (error, buffer) => error ? reject(error) : resolve(buffer)))
+      read: (size) => new Promise<Buffer>((resolve, reject) => Crypto.randomBytes(size, (error, buffer) => error ? reject(error) : resolve(buffer))),
+      error: (message) => { throw new Error(message) }
     }, {
       key,
       blockingExecutions: true
@@ -37,7 +39,13 @@ if (process.argv.length <= 3) {
         while (true) {
           // await port.exec('echo', 'Hello, world!')
           reqCount++
-          await port.exec('read', 1024 * 4)
+          // await port.exec('read', 1024 * 4)
+
+          try {
+            await port.exec('error', 'Test')
+          } catch (error) {
+            console.log(error)
+          }
           resCount++
         }
       }),

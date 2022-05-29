@@ -33,6 +33,7 @@ export declare type PortRequestPayload = [type: PortPayloadType.Request, token: 
 export declare type PortResponsePayload = [type: PortPayloadType.Response, token: Buffer, responseType: PortPayloadResponseType, data: any];
 export declare type PortPayload = PortRawPayload | PortRequestPayload | PortResponsePayload;
 export declare class Port<LocalInterface extends PortInterface, RemoteInterface extends PortInterface> {
+    static new<LocalInterface extends PortInterface, RemoteInterface extends PortInterface>(socket: Net.Socket, callbacks: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>): Port<LocalInterface, RemoteInterface>;
     constructor(socket: Net.Socket, callbacks: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>);
     readonly options: PortOptions;
     readonly socket: Net.Socket;

@@ -44,6 +44,10 @@ export type PortPayload =
   | PortResponsePayload
 
 export class Port<LocalInterface extends PortInterface, RemoteInterface extends PortInterface> {
+  public static new <LocalInterface extends PortInterface, RemoteInterface extends PortInterface> (socket: Net.Socket, callbacks: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>) {
+    return new this<LocalInterface, RemoteInterface>(socket, callbacks, options)
+  }
+
   public constructor (socket: Net.Socket, callbacks: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>) {
     this.options = {
       blockingExecutions: false,

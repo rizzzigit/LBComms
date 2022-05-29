@@ -36,6 +36,9 @@ var Port = /** @class */ (function () {
         this.destroyExpected = false;
         this._init();
     }
+    Port.new = function (socket, callbacks, options) {
+        return new this(socket, callbacks, options);
+    };
     Port.prototype.writePayload = function () {
         var payload = [];
         for (var _i = 0; _i < arguments.length; _i++) {
