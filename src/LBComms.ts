@@ -285,6 +285,10 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       }
 
       try {
+        if (!(name in this.callbacks)) {
+          throw new Error(`Unknown callback name: ${name}`)
+        }
+
         await this.writePayload([PortPayloadType.Response, token, PortPayloadResponseType.Data, serializer.serialize(await this.execLocal(name, context, ...parameters))], context.responseEncrypted)
       } catch (error) {
         await this.writePayload([PortPayloadType.Response, token, PortPayloadResponseType.Error, serializer.serialize(error)], context.responseEncrypted)

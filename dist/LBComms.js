@@ -250,6 +250,9 @@ var Port = /** @class */ (function () {
                         _k.label = 3;
                     case 3:
                         _k.trys.push([3, 6, , 8]);
+                        if (!(name in this.callbacks)) {
+                            throw new Error("Unknown callback name: ".concat(name));
+                        }
                         _b = this.writePayload;
                         _c = [PortPayloadType.Response, token, PortPayloadResponseType.Data];
                         _f = (_e = serializer).serialize;
