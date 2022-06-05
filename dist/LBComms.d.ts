@@ -10,8 +10,12 @@ export declare enum PortPayloadType {
 export interface PortInterface {
     [key: string]: [[...args: Array<any>], any];
 }
+export interface PortCallbackContext {
+    requestEncrypted: boolean;
+    responseEncrypted: boolean;
+}
 export declare type PortCallbackMap<Interface extends PortInterface> = {
-    [Property in keyof Interface]: (...args: Interface[Property][0]) => Interface[Property][1];
+    [Property in keyof Interface]: (context: PortCallbackContext, ...args: Interface[Property][0]) => Interface[Property][1];
 };
 export interface PortOptions {
     key?: string;
@@ -46,17 +50,17 @@ export declare class Port<LocalInterface extends PortInterface, RemoteInterface 
             reject: (error: Error) => void;
         };
     };
-    writePayload(...payload: PortPayload): Promise<void>;
+    writePayload(payload: PortPayload, encrypt?: boolean): Promise<void>;
     write(data: any): void;
     exec<K extends keyof RemoteInterface>(name: K, ...parameters: RemoteInterface[K][0]): Promise<RemoteInterface[K][1]>;
-    execLocal<K extends keyof LocalInterface>(name: K, ...parameters: LocalInterface[K][0]): Promise<LocalInterface[K][1]>;
+    execLocal<K extends keyof LocalInterface>(name: K, context: PortCallbackContext, ...parameters: LocalInterface[K][0]): Promise<LocalInterface[K][1]>;
     ping(pass?: number): Promise<number>;
     key?: Buffer;
     setKey(key: string): void;
     getKey(): string | undefined;
-    encryptPayload(inputBuffer: Buffer): Buffer;
+    encryptPayload(inputBuffer: Buffer, encrypt?: boolean): Buffer;
     decryptPayload(inputBuffer: Buffer): Buffer;
-    buildPayload(inputPayload: PortPayload): Buffer;
+    buildPayload(inputPayload: PortPayload, encrypt?: boolean): Buffer;
     parsePayload(inputBuffer: Buffer): PortPayload;
     private _isQueueRunning;
     private readonly _writeQueue;

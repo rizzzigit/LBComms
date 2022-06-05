@@ -39,15 +39,11 @@ var Port = /** @class */ (function () {
     Port.new = function (socket, callbacks, options) {
         return new this(socket, callbacks, options);
     };
-    Port.prototype.writePayload = function () {
-        var payload = [];
-        for (var _i = 0; _i < arguments.length; _i++) {
-            payload[_i] = arguments[_i];
-        }
-        return this._write(this.buildPayload(payload));
+    Port.prototype.writePayload = function (payload, encrypt) {
+        return this._write(this.buildPayload(payload, encrypt));
     };
     Port.prototype.write = function (data) {
-        this.writePayload(PortPayloadType.Raw, this.serializer.serialize(data));
+        this.writePayload([PortPayloadType.Raw, this.serializer.serialize(data)]);
     };
     Port.prototype.exec = function (name) {
         var _this = this;
@@ -66,17 +62,17 @@ var Port = /** @class */ (function () {
         var tokenStr = token.toString('hex');
         return new Promise(function (resolve, reject) {
             pendingRequests[tokenStr] = { resolve: resolve, reject: reject };
-            _this.writePayload(PortPayloadType.Request, token, name, parameters)
+            _this.writePayload([PortPayloadType.Request, token, name, parameters])
                 .catch(reject);
         });
     };
-    Port.prototype.execLocal = function (name) {
+    Port.prototype.execLocal = function (name, context) {
         var _a;
         var parameters = [];
-        for (var _i = 1; _i < arguments.length; _i++) {
-            parameters[_i - 1] = arguments[_i];
+        for (var _i = 2; _i < arguments.length; _i++) {
+            parameters[_i - 2] = arguments[_i];
         }
-        return (_a = this.callbacks)[name].apply(_a, parameters);
+        return (_a = this.callbacks)[name].apply(_a, tslib_1.__spreadArray([context], parameters, false));
     };
     Port.prototype.ping = function (pass) {
         if (pass === void 0) { pass = 1; }
@@ -126,9 +122,10 @@ var Port = /** @class */ (function () {
         var _a;
         return (_a = this.key) === null || _a === void 0 ? void 0 : _a.toString('hex');
     };
-    Port.prototype.encryptPayload = function (inputBuffer) {
+    Port.prototype.encryptPayload = function (inputBuffer, encrypt) {
+        if (encrypt === void 0) { encrypt = true; }
         var key = this.key;
-        if (key) {
+        if (key && encrypt) {
             var initializationVector = crypto_1.default.randomBytes(16);
             var cipher = crypto_1.default.createCipheriv('aes256', key, initializationVector);
             return Buffer.concat([
@@ -139,6 +136,9 @@ var Port = /** @class */ (function () {
             ]);
         }
         else {
+            if (encrypt) {
+                throw new Error('No key to encrypt');
+            }
             return Buffer.concat([
                 Buffer.from([0]),
                 inputBuffer
@@ -159,13 +159,13 @@ var Port = /** @class */ (function () {
             return inputBuffer.slice(1);
         }
     };
-    Port.prototype.buildPayload = function (inputPayload) {
+    Port.prototype.buildPayload = function (inputPayload, encrypt) {
         var type = inputPayload[0];
         var data = inputPayload.slice(1);
         return this.encryptPayload(Buffer.concat([
             Buffer.from([type]),
             this.serializer.serialize(data)
-        ]));
+        ]), encrypt);
     };
     Port.prototype.parsePayload = function (inputBuffer) {
         var decrypted = this.decryptPayload(inputBuffer);
@@ -228,7 +228,7 @@ var Port = /** @class */ (function () {
     };
     Port.prototype.executePayload = function (inputBuffer) {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, events, pendingRequests, serializer, payload, data, token, name, parameters, _b, _c, _e, _f, error_1, token, responseType, data, tokenStr, _g, _h, _j, resolve, reject;
+            var _a, events, pendingRequests, serializer, payload, data, token, name, parameters, context, _b, _c, _e, _f, error_1, token, responseType, data, tokenStr, _g, _h, _j, resolve, reject;
             return tslib_1.__generator(this, function (_k) {
                 switch (_k.label) {
                     case 0:
@@ -243,20 +243,24 @@ var Port = /** @class */ (function () {
                     case 2:
                         if (!(payload[0] === PortPayloadType.Request)) return [3 /*break*/, 9];
                         token = payload[1], name = payload[2], parameters = payload[3];
+                        context = {
+                            requestEncrypted: !!inputBuffer[0],
+                            responseEncrypted: !!inputBuffer[0]
+                        };
                         _k.label = 3;
                     case 3:
                         _k.trys.push([3, 6, , 8]);
                         _b = this.writePayload;
                         _c = [PortPayloadType.Response, token, PortPayloadResponseType.Data];
                         _f = (_e = serializer).serialize;
-                        return [4 /*yield*/, this.execLocal.apply(this, tslib_1.__spreadArray([name], parameters, false))];
-                    case 4: return [4 /*yield*/, _b.apply(this, _c.concat([_f.apply(_e, [_k.sent()])]))];
+                        return [4 /*yield*/, this.execLocal.apply(this, tslib_1.__spreadArray([name, context], parameters, false))];
+                    case 4: return [4 /*yield*/, _b.apply(this, [_c.concat([_f.apply(_e, [_k.sent()])]), context.responseEncrypted])];
                     case 5:
                         _k.sent();
                         return [3 /*break*/, 8];
                     case 6:
                         error_1 = _k.sent();
-                        return [4 /*yield*/, this.writePayload(PortPayloadType.Response, token, PortPayloadResponseType.Error, serializer.serialize(error_1))];
+                        return [4 /*yield*/, this.writePayload([PortPayloadType.Response, token, PortPayloadResponseType.Error, serializer.serialize(error_1)], context.responseEncrypted)];
                     case 7:
                         _k.sent();
                         return [3 /*break*/, 8];

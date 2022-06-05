@@ -15,9 +15,9 @@ const key = '0'.repeat(64)
 if (process.argv.length <= 3) {
   Net.createServer((socket) => {
     Port.new<CTest, {}>(socket, {
-      echo: (arg0) => arg0, // Implementations for PortInterface defined above,
-      read: (size) => new Promise<Buffer>((resolve, reject) => Crypto.randomBytes(size, (error, buffer) => error ? reject(error) : resolve(buffer))),
-      error: (message) => { throw new Error(message) }
+      echo: (_, arg0) => arg0, // Implementations for PortInterface defined above,
+      read: (_, size) => new Promise<Buffer>((resolve, reject) => Crypto.randomBytes(size, (error, buffer) => error ? reject(error) : resolve(buffer))),
+      error: (_, message) => { throw new Error(message) }
     }, {
       key,
       blockingExecutions: true
@@ -31,37 +31,40 @@ if (process.argv.length <= 3) {
     const port = new Port<{}, CTest>(socket, {}, {
       key
     })
-    let reqCount = 0
-    let resCount = 0
 
-    await Promise.all([
-      ...Array(1000).fill(async () => {
-        while (true) {
-          // await port.exec('echo', 'Hello, world!')
-          reqCount++
-          // await port.exec('read', 1024 * 4)
+    port.exec('test')
 
-          try {
-            await port.exec('error', 'Test')
-          } catch (error) {
-            console.log(error)
-          }
-          resCount++
-        }
-      }),
-      async () => {
-        while (true) {
-          console.log('Request sent:', reqCount, 'Response received:', resCount)
+    // let reqCount = 0
+    // let resCount = 0
 
-          reqCount = 0
-          resCount = 0
-          await new Promise<void>((resolve) => setTimeout(resolve, 1000))
-        }
-      },
-      async () => {
-        await new Promise<void>((resolve) => setTimeout(resolve, 10000))
-        await port.destroy()
-      }
-    ].map((f) => f()))
+    // await Promise.all([
+    //   ...Array(1000).fill(async () => {
+    //     while (true) {
+    //       // await port.exec('echo', 'Hello, world!')
+    //       reqCount++
+    //       // await port.exec('read', 1024 * 4)
+
+    //       try {
+    //         await port.exec('error', 'Test')
+    //       } catch (error) {
+    //         console.log(error)
+    //       }
+    //       resCount++
+    //     }
+    //   }),
+    //   async () => {
+    //     while (true) {
+    //       console.log('Request sent:', reqCount, 'Response received:', resCount)
+
+    //       reqCount = 0
+    //       resCount = 0
+    //       await new Promise<void>((resolve) => setTimeout(resolve, 1000))
+    //     }
+    //   },
+    //   async () => {
+    //     await new Promise<void>((resolve) => setTimeout(resolve, 10000))
+    //     await port.destroy()
+    //   }
+    // ].map((f) => f()))
   })
 }

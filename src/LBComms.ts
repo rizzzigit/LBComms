@@ -13,8 +13,13 @@ export interface PortInterface {
   [key: string]: [[...args: Array<any>], any]
 }
 
+export interface PortCallbackContext {
+  requestEncrypted: boolean
+  responseEncrypted: boolean
+}
+
 export type PortCallbackMap<Interface extends PortInterface> = {
-  [Property in keyof Interface]: (...args: Interface[Property][0]) => Interface[Property][1]
+  [Property in keyof Interface]: (context: PortCallbackContext, ...args: Interface[Property][0]) => Interface[Property][1]
 }
 
 export interface PortOptions {
@@ -88,12 +93,12 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     }
   }
 
-  public writePayload (...payload: PortPayload) {
-    return this._write(this.buildPayload(payload))
+  public writePayload (payload: PortPayload, encrypt?: boolean) {
+    return this._write(this.buildPayload(payload, encrypt))
   }
 
   public write (data: any) {
-    this.writePayload(PortPayloadType.Raw, this.serializer.serialize(data))
+    this.writePayload([PortPayloadType.Raw, this.serializer.serialize(data)])
   }
 
   public exec <K extends keyof RemoteInterface> (name: K, ...parameters: RemoteInterface[K][0]): Promise<RemoteInterface[K][1]> {
@@ -111,13 +116,13 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     return new Promise((resolve, reject) => {
       pendingRequests[tokenStr] = { resolve, reject }
 
-      this.writePayload(PortPayloadType.Request, token, <string> name, parameters)
+      this.writePayload([PortPayloadType.Request, token, <string> name, parameters])
         .catch(reject)
     })
   }
 
-  public execLocal <K extends keyof LocalInterface> (name: K, ...parameters: LocalInterface[K][0]): Promise<LocalInterface[K][1]> {
-    return this.callbacks[name](...parameters)
+  public execLocal <K extends keyof LocalInterface> (name: K, context: PortCallbackContext, ...parameters: LocalInterface[K][0]): Promise<LocalInterface[K][1]> {
+    return this.callbacks[name](context, ...parameters)
   }
 
   public async ping (pass: number = 1) {
@@ -153,10 +158,10 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     return this.key?.toString('hex')
   }
 
-  public encryptPayload (inputBuffer: Buffer) {
+  public encryptPayload (inputBuffer: Buffer, encrypt: boolean = true) {
     const { key } = this
 
-    if (key) {
+    if (key && encrypt) {
       const initializationVector = Crypto.randomBytes(16)
       const cipher = Crypto.createCipheriv('aes256', key, initializationVector)
 
@@ -167,6 +172,10 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
         cipher.final()
       ])
     } else {
+      if (encrypt) {
+        throw new Error('No key to encrypt')
+      }
+
       return Buffer.concat([
         Buffer.from([0]),
         inputBuffer
@@ -189,14 +198,14 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     }
   }
 
-  public buildPayload (inputPayload: PortPayload) {
+  public buildPayload (inputPayload: PortPayload, encrypt?: boolean) {
     const type = inputPayload[0]
     const data = inputPayload.slice(1)
 
     return this.encryptPayload(Buffer.concat([
       Buffer.from([type]),
       this.serializer.serialize(data)
-    ]))
+    ]), encrypt)
   }
 
   public parsePayload (inputBuffer: Buffer): PortPayload {
@@ -270,10 +279,15 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       await events.emit('data', data)
     } else if (payload[0] === PortPayloadType.Request) {
       const [, token, name, parameters] = payload
+      const context: PortCallbackContext = {
+        requestEncrypted: !!inputBuffer[0],
+        responseEncrypted: !!inputBuffer[0]
+      }
+
       try {
-        await this.writePayload(PortPayloadType.Response, token, PortPayloadResponseType.Data, serializer.serialize(await this.execLocal(name, ...parameters)))
+        await this.writePayload([PortPayloadType.Response, token, PortPayloadResponseType.Data, serializer.serialize(await this.execLocal(name, context, ...parameters))], context.responseEncrypted)
       } catch (error) {
-        await this.writePayload(PortPayloadType.Response, token, PortPayloadResponseType.Error, serializer.serialize(error))
+        await this.writePayload([PortPayloadType.Response, token, PortPayloadResponseType.Error, serializer.serialize(error)], context.responseEncrypted)
       }
     } else if (payload[0] === PortPayloadType.Response) {
       const [, token, responseType, data] = payload
