@@ -158,10 +158,10 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     return this.key?.toString('hex')
   }
 
-  public encryptPayload (inputBuffer: Buffer, encrypt: boolean = true) {
+  public encryptPayload (inputBuffer: Buffer, encrypt?: boolean) {
     const { key } = this
 
-    if (key && encrypt) {
+    if (key && [undefined, true].includes(encrypt)) {
       const initializationVector = Crypto.randomBytes(16)
       const cipher = Crypto.createCipheriv('aes256', key, initializationVector)
 
@@ -172,7 +172,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
         cipher.final()
       ])
     } else {
-      if (encrypt) {
+      if (encrypt === true) {
         throw new Error('No key to encrypt')
       }
 

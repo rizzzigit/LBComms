@@ -123,9 +123,8 @@ var Port = /** @class */ (function () {
         return (_a = this.key) === null || _a === void 0 ? void 0 : _a.toString('hex');
     };
     Port.prototype.encryptPayload = function (inputBuffer, encrypt) {
-        if (encrypt === void 0) { encrypt = true; }
         var key = this.key;
-        if (key && encrypt) {
+        if (key && [undefined, true].includes(encrypt)) {
             var initializationVector = crypto_1.default.randomBytes(16);
             var cipher = crypto_1.default.createCipheriv('aes256', key, initializationVector);
             return Buffer.concat([
@@ -136,7 +135,7 @@ var Port = /** @class */ (function () {
             ]);
         }
         else {
-            if (encrypt) {
+            if (encrypt === true) {
                 throw new Error('No key to encrypt');
             }
             return Buffer.concat([
