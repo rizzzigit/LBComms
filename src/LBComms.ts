@@ -6,6 +6,7 @@ import EventEmitter, { EventInterface } from '@rizzzi/eventemitter'
 export enum PortPayloadType {
   Request,
   Response,
+  Header,
   Raw
 }
 
@@ -385,5 +386,85 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
 
       reject(new Error('Socket is closed'))
     }
+  }
+}
+
+export interface ServerEvents<LocalInterface extends PortInterface, RemoteInterface extends PortInterface> extends EventInterface {
+  connection: [port: Port<LocalInterface, RemoteInterface>]
+  listening: []
+  error: [error: Error]
+  close: []
+}
+
+export class Server<LocalInterface extends PortInterface, RemoteInterface extends PortInterface> {
+  public constructor (listener: Net.Server, map: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>) {
+    this.options = {
+      blockingExecutions: false,
+      ...options
+    }
+    this.listener = listener
+    this.map = map
+    this.events = new EventEmitter({ requireErrorHandling: true })
+
+    const { on, once, off } = this.events.bind()
+    this.on = on
+    this.once = once
+    this.off = off
+
+    listener.on('listening', () => { this.events.emit('listening') })
+    listener.on('close', () => { this.events.emit('close') })
+    listener.on('connection', (socket) => { this.events.emit('connection', this.wrap(socket)) })
+    listener.on('error', (error) => { this.events.emit('error', error) })
+  }
+
+  public readonly options: PortOptions
+  public readonly listener: Net.Server
+  public readonly map: PortCallbackMap<LocalInterface>
+  public readonly events: EventEmitter<ServerEvents<LocalInterface, RemoteInterface>>
+
+  public readonly on: this['events']['on']
+  public readonly once: this['events']['once']
+  public readonly off: this['events']['off']
+
+  public listen (port: number, hostname?: string) {
+    return new Promise<void>((resolve, reject) => {
+      try {
+        this.listener.listen(port, hostname, () => {
+          resolve()
+        })
+      } catch (error) {
+        reject(error)
+      }
+    })
+  }
+
+  public wrap (socket: Net.Socket) {
+    return Port.new<LocalInterface, RemoteInterface>(socket, this.map, this.options)
+  }
+}
+
+export class Agent<LocalInterface extends PortInterface, RemoteInterface extends PortInterface> {
+  public constructor (map: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>) {
+    this.options = {
+      blockingExecutions: false,
+      ...options
+    }
+    this.map = map
+  }
+
+  public readonly options: PortOptions
+  public readonly map: PortCallbackMap<LocalInterface>
+
+  public connect (connectOpts: Net.NetConnectOpts) {
+    return new Promise<Port<LocalInterface, RemoteInterface>>((resolve, reject) => {
+      const socket = Net.connect(connectOpts)
+
+      socket.once('error', reject)
+      socket.on('ready', () => {
+        socket.off('error', reject)
+
+        resolve(Port.new<LocalInterface, RemoteInterface>(socket, this.map, this.options))
+      })
+    })
   }
 }

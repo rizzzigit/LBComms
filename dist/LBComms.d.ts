@@ -5,7 +5,8 @@ import EventEmitter, { EventInterface } from '@rizzzi/eventemitter';
 export declare enum PortPayloadType {
     Request = 0,
     Response = 1,
-    Raw = 2
+    Header = 2,
+    Raw = 3
 }
 export interface PortInterface {
     [key: string]: [[...args: Array<any>], any];
@@ -70,4 +71,28 @@ export declare class Port<LocalInterface extends PortInterface, RemoteInterface 
     private destroyExpected;
     destroy(error?: Error): Promise<void>;
     private _init;
+}
+export interface ServerEvents<LocalInterface extends PortInterface, RemoteInterface extends PortInterface> extends EventInterface {
+    connection: [port: Port<LocalInterface, RemoteInterface>];
+    listening: [];
+    error: [error: Error];
+    close: [];
+}
+export declare class Server<LocalInterface extends PortInterface, RemoteInterface extends PortInterface> {
+    constructor(listener: Net.Server, map: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>);
+    readonly options: PortOptions;
+    readonly listener: Net.Server;
+    readonly map: PortCallbackMap<LocalInterface>;
+    readonly events: EventEmitter<ServerEvents<LocalInterface, RemoteInterface>>;
+    readonly on: this['events']['on'];
+    readonly once: this['events']['once'];
+    readonly off: this['events']['off'];
+    listen(port: number, hostname?: string): Promise<void>;
+    wrap(socket: Net.Socket): Port<LocalInterface, RemoteInterface>;
+}
+export declare class Agent<LocalInterface extends PortInterface, RemoteInterface extends PortInterface> {
+    constructor(map: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>);
+    readonly options: PortOptions;
+    readonly map: PortCallbackMap<LocalInterface>;
+    connect(connectOpts: Net.NetConnectOpts): Promise<Port<LocalInterface, RemoteInterface>>;
 }

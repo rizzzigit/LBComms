@@ -1,15 +1,17 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Port = exports.PortPayloadResponseType = exports.PortPayloadType = void 0;
+exports.Agent = exports.Server = exports.Port = exports.PortPayloadResponseType = exports.PortPayloadType = void 0;
 var tslib_1 = require("tslib");
 var crypto_1 = tslib_1.__importDefault(require("crypto"));
+var net_1 = tslib_1.__importDefault(require("net"));
 var lb_serializer_1 = tslib_1.__importDefault(require("@rizzzi/lb-serializer"));
 var eventemitter_1 = tslib_1.__importDefault(require("@rizzzi/eventemitter"));
 var PortPayloadType;
 (function (PortPayloadType) {
     PortPayloadType[PortPayloadType["Request"] = 0] = "Request";
     PortPayloadType[PortPayloadType["Response"] = 1] = "Response";
-    PortPayloadType[PortPayloadType["Raw"] = 2] = "Raw";
+    PortPayloadType[PortPayloadType["Header"] = 2] = "Header";
+    PortPayloadType[PortPayloadType["Raw"] = 3] = "Raw";
 })(PortPayloadType = exports.PortPayloadType || (exports.PortPayloadType = {}));
 var PortPayloadResponseType;
 (function (PortPayloadResponseType) {
@@ -398,3 +400,57 @@ var Port = /** @class */ (function () {
     return Port;
 }());
 exports.Port = Port;
+var Server = /** @class */ (function () {
+    function Server(listener, map, options) {
+        var _this = this;
+        this.options = tslib_1.__assign({ blockingExecutions: false }, options);
+        this.listener = listener;
+        this.map = map;
+        this.events = new eventemitter_1.default({ requireErrorHandling: true });
+        var _a = this.events.bind(), on = _a.on, once = _a.once, off = _a.off;
+        this.on = on;
+        this.once = once;
+        this.off = off;
+        listener.on('listening', function () { _this.events.emit('listening'); });
+        listener.on('close', function () { _this.events.emit('close'); });
+        listener.on('connection', function (socket) { _this.events.emit('connection', _this.wrap(socket)); });
+        listener.on('error', function (error) { _this.events.emit('error', error); });
+    }
+    Server.prototype.listen = function (port, hostname) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            try {
+                _this.listener.listen(port, hostname, function () {
+                    resolve();
+                });
+            }
+            catch (error) {
+                reject(error);
+            }
+        });
+    };
+    Server.prototype.wrap = function (socket) {
+        return Port.new(socket, this.map, this.options);
+    };
+    return Server;
+}());
+exports.Server = Server;
+var Agent = /** @class */ (function () {
+    function Agent(map, options) {
+        this.options = tslib_1.__assign({ blockingExecutions: false }, options);
+        this.map = map;
+    }
+    Agent.prototype.connect = function (connectOpts) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            var socket = net_1.default.connect(connectOpts);
+            socket.once('error', reject);
+            socket.on('ready', function () {
+                socket.off('error', reject);
+                resolve(Port.new(socket, _this.map, _this.options));
+            });
+        });
+    };
+    return Agent;
+}());
+exports.Agent = Agent;
