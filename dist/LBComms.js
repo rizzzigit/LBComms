@@ -37,6 +37,10 @@ var Port = /** @class */ (function () {
         }
         this.destroyExpected = false;
         this._init();
+        var _a = this.events.bind(), on = _a.on, once = _a.once, off = _a.off;
+        this.on = on;
+        this.once = once;
+        this.off = off;
     }
     Port.new = function (socket, callbacks, options) {
         return new this(socket, callbacks, options);

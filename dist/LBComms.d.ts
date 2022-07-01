@@ -51,6 +51,9 @@ export declare class Port<LocalInterface extends PortInterface, RemoteInterface 
             reject: (error: Error) => void;
         };
     };
+    readonly on: this['events']['on'];
+    readonly once: this['events']['once'];
+    readonly off: this['events']['off'];
     writePayload(payload: PortPayload, encrypt?: boolean): Promise<void>;
     write(data: any): void;
     exec<K extends keyof RemoteInterface>(name: K, ...parameters: RemoteInterface[K][0]): Promise<RemoteInterface[K][1]>;

@@ -80,6 +80,11 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     this.destroyExpected = false
 
     this._init()
+
+    const { on, once, off } = this.events.bind()
+    this.on = on
+    this.once = once
+    this.off = off
   }
 
   public readonly options: PortOptions
@@ -93,6 +98,10 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       reject: (error: Error) => void
     }
   }
+
+  public readonly on: this['events']['on']
+  public readonly once: this['events']['once']
+  public readonly off: this['events']['off']
 
   public writePayload (payload: PortPayload, encrypt?: boolean) {
     return this._write(this.buildPayload(payload, encrypt))
