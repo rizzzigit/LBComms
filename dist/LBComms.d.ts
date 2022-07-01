@@ -55,7 +55,7 @@ export declare class Port<LocalInterface extends PortInterface, RemoteInterface 
     readonly once: this['events']['once'];
     readonly off: this['events']['off'];
     writePayload(payload: PortPayload, encrypt?: boolean): Promise<void>;
-    write(data: any): void;
+    write(data: any): Promise<void>;
     exec<K extends keyof RemoteInterface>(name: K, ...parameters: RemoteInterface[K][0]): Promise<RemoteInterface[K][1]>;
     execLocal<K extends keyof LocalInterface>(name: K, context: PortCallbackContext, ...parameters: LocalInterface[K][0]): Promise<LocalInterface[K][1]>;
     ping(pass?: number): Promise<number>;

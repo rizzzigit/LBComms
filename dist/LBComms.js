@@ -49,7 +49,7 @@ var Port = /** @class */ (function () {
         return this._write(this.buildPayload(payload, encrypt));
     };
     Port.prototype.write = function (data) {
-        this.writePayload([PortPayloadType.Raw, this.serializer.serialize(data)]);
+        return this.writePayload([PortPayloadType.Raw, this.serializer.serialize(data)]);
     };
     Port.prototype.exec = function (name) {
         var _this = this;

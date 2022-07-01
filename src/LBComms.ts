@@ -108,7 +108,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
   }
 
   public write (data: any) {
-    this.writePayload([PortPayloadType.Raw, this.serializer.serialize(data)])
+    return this.writePayload([PortPayloadType.Raw, this.serializer.serialize(data)])
   }
 
   public exec <K extends keyof RemoteInterface> (name: K, ...parameters: RemoteInterface[K][0]): Promise<RemoteInterface[K][1]> {
