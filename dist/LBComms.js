@@ -241,7 +241,7 @@ var Port = /** @class */ (function () {
                         payload = this.parsePayload(inputBuffer);
                         if (!(payload[0] === PortPayloadType.Raw)) return [3 /*break*/, 2];
                         data = payload[1];
-                        return [4 /*yield*/, events.emit('data', data)];
+                        return [4 /*yield*/, events.emit('data', serializer.deserialize(Buffer.from(data.data)))];
                     case 1:
                         _k.sent();
                         return [3 /*break*/, 10];

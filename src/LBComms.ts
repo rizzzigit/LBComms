@@ -286,7 +286,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
 
     if (payload[0] === PortPayloadType.Raw) {
       const [, data] = payload
-      await events.emit('data', data)
+      await events.emit('data', serializer.deserialize(Buffer.from(data.data)))
     } else if (payload[0] === PortPayloadType.Request) {
       const [, token, name, parameters] = payload
       const context: PortCallbackContext = {
