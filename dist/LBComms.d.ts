@@ -45,6 +45,7 @@ export declare class Port<LocalInterface extends PortInterface, RemoteInterface 
     unpackPayload(payload: Buffer): Payload;
     execLocal<Name extends keyof LocalInterface>(name: Name, ...args: LocalInterface[Name][0]): Promise<LocalInterface[Name][1]>;
     exec<Name extends keyof RemoteInterface>(name: Name, ...args: RemoteInterface[Name][0]): Promise<RemoteInterface[Name][1]>;
+    send(data: any, encrypt?: boolean): Promise<void>;
     private _pendingRequests;
     destroy(error?: Error): Promise<void>;
     evaluatePayload(payload: Payload): Promise<void>;

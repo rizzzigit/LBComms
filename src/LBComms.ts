@@ -157,6 +157,10 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     return await promise
   }
 
+  public send (data: any, encrypt?: boolean) {
+    return this.write([0, data], encrypt)
+  }
+
   private _pendingRequests: {
     [key: string]: {
       resolve: (data: any) => void

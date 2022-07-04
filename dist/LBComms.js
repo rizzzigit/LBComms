@@ -116,6 +116,9 @@ var Port = /** @class */ (function () {
             });
         });
     };
+    Port.prototype.send = function (data, encrypt) {
+        return this.write([0, data], encrypt);
+    };
     Port.prototype.destroy = function (error) {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
             return tslib_1.__generator(this, function (_a) {
