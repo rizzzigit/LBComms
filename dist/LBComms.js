@@ -226,12 +226,12 @@ var Port = /** @class */ (function () {
     };
     Port.prototype._wrap = function () {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, socket, events, options, serializer, bufferSink, dataCallback, waitForData, tick;
+            var _a, socket, events, options, bufferSink, dataCallback, waitForData, tick;
             var _this = this;
             return tslib_1.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
-                        _a = this, socket = _a.socket, events = _a.events, options = _a.options, serializer = _a.serializer;
+                        _a = this, socket = _a.socket, events = _a.events, options = _a.options;
                         bufferSink = Buffer.alloc(0);
                         socket.on('error', function (error) { return events.emit('error', error); });
                         socket.on('drain', function () { return events.emit('drain'); });
@@ -292,8 +292,8 @@ var Port = /** @class */ (function () {
                         }); };
                         _b.label = 1;
                     case 1:
-                        if (!!this.socket.destroyed) return [3 /*break*/, 3];
-                        return [4 /*yield*/, tick().catch(this.destroy)];
+                        if (!!socket.destroyed) return [3 /*break*/, 3];
+                        return [4 /*yield*/, tick().catch(function (error) { return socket.destroy(error); })];
                     case 2:
                         _b.sent();
                         return [3 /*break*/, 1];

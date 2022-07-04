@@ -240,7 +240,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
   }
 
   private async _wrap () {
-    const { socket, events, options, serializer } = this
+    const { socket, events, options } = this
 
     let bufferSink = Buffer.alloc(0)
     let dataCallback: undefined | (() => void)
@@ -297,8 +297,8 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       }
     }
 
-    while (!this.socket.destroyed) {
-      await tick().catch(this.destroy)
+    while (!socket.destroyed) {
+      await tick().catch((error) => socket.destroy(error))
     }
   }
 
