@@ -10,7 +10,7 @@ interface CTest extends LBComms.PortInterface {
 }
 
 const time = () => Math.round(Date.now() / 1000)
-const key = '0'.repeat(64)
+const key = Buffer.from('0'.repeat(64), 'hex')
 
 const run = async () => {
   const map: LBComms.PortCallbackMap<CTest> = {
@@ -23,14 +23,24 @@ const run = async () => {
     const server = new LBComms.Server(Net.createServer(), map, { key })
     await server.listen(Number(process.argv[2]))
   } else {
-    const client = new LBComms.Agent(map, { key })
+    const client = new LBComms.Agent<CTest, CTest>(map, { key })
     const connection = await client.connect({
       host: process.argv[2],
       port: Number(process.argv[3])
     })
 
-    console.log(connection)
-    console.log(await connection.exec('echo', 'Hello'))
+    const timeout = Date.now() + 10000
+    let count = 0
+    while (true) {
+      console.log(++count)
+      await connection.exec('read', 16 * 1024)
+
+      if (timeout < Date.now()) {
+        break
+      }
+    }
+
+    await connection.destroy()
   }
 }
 

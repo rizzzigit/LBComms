@@ -3,13 +3,6 @@ import Net from 'net'
 import LBSerializer from '@rizzzi/lb-serializer'
 import EventEmitter, { EventInterface } from '@rizzzi/eventemitter'
 
-export enum PortPayloadType {
-  Request,
-  Response,
-  Header,
-  Raw
-}
-
 export interface PortInterface {
   [key: string]: [[...args: Array<any>], any]
 }
@@ -24,30 +17,27 @@ export type PortCallbackMap<Interface extends PortInterface> = {
 }
 
 export interface PortOptions {
-  key?: string
+  key?: Buffer
   blockingExecutions: boolean
-}
-
-export enum PortPayloadResponseType {
-  Data,
-  Error
 }
 
 export interface PortEvents extends EventInterface {
   listening: []
+
   data: [data: any]
-  rawData: [data: Buffer]
+  drain: []
   close: [hadError: boolean]
+  finish: []
   error: [error: Error]
 }
 
-export type PortRawPayload = [type: PortPayloadType.Raw, data: any]
-export type PortRequestPayload = [type: PortPayloadType.Request, token: Buffer, name: string, parameters: Array<any>]
-export type PortResponsePayload = [type: PortPayloadType.Response, token: Buffer, responseType: PortPayloadResponseType, data: any]
-export type PortPayload =
-  | PortRawPayload
-  | PortRequestPayload
-  | PortResponsePayload
+export type RawPayloadParams = [type: 0, data: any]
+export type RequestPayloadParams = [type: 1, token: Buffer, name: string, parameters: Array<any>]
+export type ResponsePayloadParams = [type: 2, token: Buffer, isError: boolean, data: any]
+export type Payload =
+  | RawPayloadParams
+  | RequestPayloadParams
+  | ResponsePayloadParams
 
 export class Port<LocalInterface extends PortInterface, RemoteInterface extends PortInterface> {
   public static new <LocalInterface extends PortInterface, RemoteInterface extends PortInterface> (socket: Net.Socket, callbacks: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>) {
@@ -59,80 +49,253 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       blockingExecutions: false,
       ...options
     }
+
+    this.events = new EventEmitter({ requireErrorHandling: true })
+    const { on, once, off } = this.events.bind()
+    this.on = on
+    this.once = once
+    this.off = off
+
     this.serializer = new LBSerializer.Serializer()
     this.socket = socket
     this.callbacks = {
       ...callbacks,
       _np: () => {},
-      _d: () => {
-        this.destroyExpected = true
-        this.socket.destroy()
+      _dc: () => {
+        this._destroyed = true
       }
     }
-    this.events = new EventEmitter({ requireErrorHandling: true })
-    this.pendingRequests = {}
-    this._isQueueRunning = false
-    this._writeQueue = []
 
-    if (this.options.key) {
-      this.setKey(this.options.key)
-    }
-    this.destroyExpected = false
+    this._pendingRequests = {}
+    this._wrap()
 
-    this._init()
-
-    const { on, once, off } = this.events.bind()
-    this.on = on
-    this.once = once
-    this.off = off
+    this._destroyed = false
   }
 
-  public readonly options: PortOptions
-  public readonly socket: Net.Socket
-  public readonly serializer: LBSerializer.Serializer
-  public readonly callbacks: PortCallbackMap<LocalInterface>
   public readonly events: EventEmitter<PortEvents>
-  public readonly pendingRequests: {
+  public readonly on: this['events']['on']
+  public readonly once: this['events']['once']
+  public readonly off: this['events']['off']
+
+  public readonly serializer: LBSerializer.Serializer
+  public readonly socket: Net.Socket
+  public readonly options: PortOptions
+  public readonly callbacks: PortCallbackMap<LocalInterface>
+
+  private _destroyed: boolean
+  public get destroyed () { return this._destroyed || this.socket.destroyed }
+
+  public packPayload (payload: Payload, encrypt: boolean = !!this.options.key): Buffer {
+    const { serializer } = this
+    const buffer = serializer.serialize(payload)
+
+    if (encrypt) {
+      const { options: { key } } = this
+
+      if (!key) {
+        throw new Error('No key to encrypt')
+      }
+
+      const iv = Crypto.randomBytes(16)
+      const cipher = Crypto.createCipheriv('aes256', key, iv)
+
+      return Buffer.concat([
+        Buffer.from([1]),
+        iv,
+        cipher.update(buffer),
+        cipher.final()
+      ])
+    }
+
+    return Buffer.concat([Buffer.from([0]), buffer])
+  }
+
+  public unpackPayload (payload: Buffer): Payload {
+    const { serializer } = this
+
+    if (payload[0]) {
+      const { options: { key } } = this
+
+      if (!key) {
+        throw new Error('No key to decrypt')
+      }
+
+      const iv = payload.slice(1, 17)
+      const buffer = payload.slice(17)
+      const decipher = Crypto.createDecipheriv('aes256', key, iv)
+
+      return serializer.deserialize(Buffer.concat([
+        decipher.update(buffer),
+        decipher.final()
+      ]))
+    } else {
+      return serializer.deserialize(payload.slice(1))
+    }
+  }
+
+  public async execLocal <Name extends keyof LocalInterface> (name: Name, ...args: LocalInterface[Name][0]): Promise<LocalInterface[Name][1]> {
+    const { callbacks, options } = this
+    const context: PortCallbackContext = {
+      requestEncrypted: !!options.key,
+      responseEncrypted: !!options.key
+    }
+
+    return await callbacks[name](context, ...args)
+  }
+
+  public async exec <Name extends keyof RemoteInterface> (name: Name, ...args: RemoteInterface[Name][0]): Promise<RemoteInterface[Name][1]> {
+    const { _pendingRequests: pendingRequests } = this
+
+    let token: Buffer
+    let tokenStr: string
+    do {
+      tokenStr = (token = Crypto.randomBytes(8)).toString('hex')
+    } while (tokenStr in pendingRequests)
+
+    const promise = new Promise<PromiseFulfilledResult<RemoteInterface[Name][1]>>((resolve, reject) => (pendingRequests[tokenStr] = { resolve, reject }))
+    await this.write([1, token, <string> name, args])
+    return await promise
+  }
+
+  private _pendingRequests: {
     [key: string]: {
       resolve: (data: any) => void
       reject: (error: Error) => void
     }
   }
 
-  public readonly on: this['events']['on']
-  public readonly once: this['events']['once']
-  public readonly off: this['events']['off']
-
-  public writePayload (payload: PortPayload, encrypt?: boolean) {
-    return this._write(this.buildPayload(payload, encrypt))
+  public async destroy (error?: Error) {
+    this._destroyed = true
+    await this.exec('_dc')
+    this.socket.destroy(error)
   }
 
-  public write (data: any) {
-    return this.writePayload([PortPayloadType.Raw, this.serializer.serialize(data)])
+  public async evaluatePayload (payload: Payload) {
+    const { events } = this
+
+    switch (payload[0]) {
+      // Raw
+      case 0:
+        await events.emit('data', payload[1])
+        break
+
+      // Request
+      case 1:
+        await (async () => {
+          const [, token, name, parameters] = payload
+
+          try {
+            const result = await this.execLocal(name, ...parameters)
+
+            await this.write([2, token, false, result])
+          } catch (error) {
+            await this.write([2, token, true, error])
+          }
+        })()
+        break
+
+      // Response
+      case 2:
+        await (async () => {
+          const { _pendingRequests: pendingRequests } = this
+          const [, token, isError, data] = payload
+
+          const tokenStr = token.toString('hex')
+          if (!(tokenStr in pendingRequests)) {
+            return
+          }
+
+          const { resolve, reject } = pendingRequests[tokenStr]
+          delete pendingRequests[tokenStr]
+
+          if (isError) {
+            reject(data)
+          } else {
+            resolve(data)
+          }
+        })()
+        break
+    }
   }
 
-  public exec <K extends keyof RemoteInterface> (name: K, ...parameters: RemoteInterface[K][0]): Promise<RemoteInterface[K][1]> {
-    const { pendingRequests } = this
-    const token = (() => {
-      let token: Buffer
-      do {
-        token = Crypto.randomBytes(16)
-      } while (token.toString('hex') in pendingRequests)
+  private _write (buffer: Buffer) {
+    return new Promise<void>((resolve, reject) => this.socket.write(buffer, (error) => error ? reject(error) : resolve()))
+  }
 
-      return token
-    })()
-    const tokenStr = token.toString('hex')
+  public write (payload: Payload, encrypt?: boolean) {
+    const buffer = this.packPayload(payload, encrypt)
 
-    return new Promise((resolve, reject) => {
-      pendingRequests[tokenStr] = { resolve, reject }
+    let bufferSize = buffer.length.toString(16)
+    if (bufferSize.length % 2) {
+      bufferSize = `0${bufferSize}`
+    }
+    const bufferSizeBuffer = Buffer.from(bufferSize, 'hex')
+    const bufferSizeBufferLength = Buffer.from([bufferSizeBuffer.length])
 
-      this.writePayload([PortPayloadType.Request, token, <string> name, parameters])
-        .catch(reject)
+    return this._write(Buffer.concat([bufferSizeBufferLength, bufferSizeBuffer, buffer]))
+  }
+
+  private async _wrap () {
+    const { socket, events, options, serializer } = this
+
+    let bufferSink = Buffer.alloc(0)
+    let dataCallback: undefined | (() => void)
+
+    socket.on('error', (error) => events.emit('error', error))
+    socket.on('drain', () => events.emit('drain'))
+    socket.on('finish', () => events.emit('finish'))
+
+    socket.on('close', (hadError) => {
+      this._destroyed = false
+      dataCallback?.()
+      events.emit('close', hadError)
     })
-  }
 
-  public execLocal <K extends keyof LocalInterface> (name: K, context: PortCallbackContext, ...parameters: LocalInterface[K][0]): Promise<LocalInterface[K][1]> {
-    return this.callbacks[name](context, ...parameters)
+    socket.on('data', (buffer) => {
+      bufferSink = Buffer.concat([bufferSink, buffer])
+      dataCallback?.()
+    })
+
+    const waitForData = () => new Promise<void>((resolve) => {
+      dataCallback = () => {
+        dataCallback = undefined
+        resolve()
+      }
+    })
+
+    const tick = async () => {
+      if (!bufferSink.length) {
+        await waitForData()
+      }
+
+      const bufferSizeBufferLength = bufferSink[0]
+      const bufferSizeBuffer = bufferSink.slice(1, bufferSizeBufferLength + 1)
+      if (bufferSizeBufferLength !== bufferSizeBuffer.length) {
+        await waitForData()
+        return
+      }
+
+      const bufferSize = Number.parseInt(`${bufferSizeBuffer.toString('hex')}`, 16)
+      const buffer = bufferSink.slice(1 + bufferSizeBufferLength, 1 + bufferSizeBufferLength + bufferSize)
+
+      if (bufferSize !== buffer.length) {
+        await waitForData()
+        return
+      }
+
+      bufferSink = bufferSink.slice(1 + bufferSizeBuffer.length + buffer.length)
+
+      const payload = this.unpackPayload(buffer)
+      const task = this.evaluatePayload(payload)
+
+      if (options.blockingExecutions) {
+        await task
+      }
+    }
+
+    while (!this.socket.destroyed) {
+      await tick().catch(this.destroy)
+    }
   }
 
   public async ping (pass: number = 1) {
@@ -152,249 +315,6 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     }
 
     return ms
-  }
-
-  public key?: Buffer
-
-  public setKey (key: string) {
-    if (key.length !== 64) {
-      throw new Error('Invalid key length')
-    }
-
-    this.key = Buffer.from(key, 'hex')
-  }
-
-  public getKey () {
-    return this.key?.toString('hex')
-  }
-
-  public encryptPayload (inputBuffer: Buffer, encrypt?: boolean) {
-    const { key } = this
-
-    if (key && [undefined, true].includes(encrypt)) {
-      const initializationVector = Crypto.randomBytes(16)
-      const cipher = Crypto.createCipheriv('aes256', key, initializationVector)
-
-      return Buffer.concat([
-        Buffer.from([1]),
-        initializationVector,
-        cipher.update(inputBuffer),
-        cipher.final()
-      ])
-    } else {
-      if (encrypt === true) {
-        throw new Error('No key to encrypt')
-      }
-
-      return Buffer.concat([
-        Buffer.from([0]),
-        inputBuffer
-      ])
-    }
-  }
-
-  public decryptPayload (inputBuffer: Buffer) {
-    const { key } = this
-
-    if (inputBuffer[0]) {
-      if (!key) { throw new Error('No key present to decrypt payload') }
-
-      const initializationVector = inputBuffer.slice(1, 17)
-      const decipher = Crypto.createDecipheriv('aes256', key, initializationVector)
-
-      return Buffer.concat([decipher.update(inputBuffer.slice(17)), decipher.final()])
-    } else {
-      return inputBuffer.slice(1)
-    }
-  }
-
-  public buildPayload (inputPayload: PortPayload, encrypt?: boolean) {
-    const type = inputPayload[0]
-    const data = inputPayload.slice(1)
-
-    return this.encryptPayload(Buffer.concat([
-      Buffer.from([type]),
-      this.serializer.serialize(data)
-    ]), encrypt)
-  }
-
-  public parsePayload (inputBuffer: Buffer): PortPayload {
-    const decrypted = this.decryptPayload(inputBuffer)
-    const type = decrypted[0]
-    const data = decrypted.slice(1)
-
-    return <any> [
-      type,
-      ...this.serializer.deserialize(data)
-    ]
-  }
-
-  private _isQueueRunning: boolean
-  private readonly _writeQueue: Array<{
-    buffer: Buffer
-    resolve: () => void
-    reject: (error: Error) => void
-  }>
-
-  private async _runWriteQueue () {
-    const { _writeQueue: writeQueue, socket } = this
-
-    if (this._isQueueRunning) {
-      return
-    }
-
-    this._isQueueRunning = true
-    try {
-      const buffers: Array<Buffer> = []
-      const resolves: Array<() => void> = []
-      const rejects: Array<(error: Error) => void> = []
-
-      while (writeQueue.length) {
-        const entry = <typeof writeQueue[0]> writeQueue.shift()
-        const sizeBuffer = Buffer.from(((hex) => hex.length % 2 ? `0${hex}` : hex)(entry.buffer.length.toString(16)), 'hex')
-
-        buffers.push(Buffer.from([sizeBuffer.length]), sizeBuffer, entry.buffer)
-        resolves.push(entry.resolve)
-        rejects.push(entry.reject)
-      }
-
-      const concat = Buffer.concat(buffers)
-      await new Promise<void>((resolve, reject) => socket.write(concat, (error) => error ? reject(error) : resolve()))
-        .then(() => resolves.forEach((f) => f()))
-        .catch((error) => rejects.forEach((f) => f(error)))
-    } finally {
-      this._isQueueRunning = false
-    }
-  }
-
-  private _write (buffer: Buffer) {
-    return new Promise<void>((resolve, reject) => {
-      if (this.socket.destroyed) {
-        throw new Error('Socket is closed')
-      }
-
-      this._writeQueue.push({ buffer, resolve, reject })
-      if (!this._isQueueRunning) {
-        this._runWriteQueue()
-      }
-    })
-  }
-
-  public async executePayload (inputBuffer: Buffer) {
-    const { events, pendingRequests, serializer } = this
-    const payload = this.parsePayload(inputBuffer)
-
-    if (payload[0] === PortPayloadType.Raw) {
-      const [, data] = payload
-      await events.emit('data', serializer.deserialize(Buffer.from(data.data)))
-    } else if (payload[0] === PortPayloadType.Request) {
-      const [, token, name, parameters] = payload
-      const context: PortCallbackContext = {
-        requestEncrypted: !!inputBuffer[0],
-        responseEncrypted: !!inputBuffer[0]
-      }
-
-      try {
-        if (!(name in this.callbacks)) {
-          throw new Error(`Unknown callback name: ${name}`)
-        }
-
-        await this.writePayload([PortPayloadType.Response, token, PortPayloadResponseType.Data, serializer.serialize(await this.execLocal(name, context, ...parameters))], context.responseEncrypted)
-      } catch (error) {
-        await this.writePayload([PortPayloadType.Response, token, PortPayloadResponseType.Error, serializer.serialize(error)], context.responseEncrypted)
-      }
-    } else if (payload[0] === PortPayloadType.Response) {
-      const [, token, responseType, data] = payload
-      const tokenStr = token.toString('hex')
-
-      if (tokenStr in pendingRequests) {
-        const { [tokenStr]: { resolve, reject } } = pendingRequests
-        delete pendingRequests[tokenStr]
-
-        if (responseType === PortPayloadResponseType.Data) {
-          resolve(serializer.deserialize(data))
-        } else if (responseType === PortPayloadResponseType.Error) {
-          reject(serializer.deserialize(data))
-        } else {
-          throw new Error(`Unknown response type: 0x${(<number> responseType).toString(16)}`)
-        }
-      }
-    }
-  }
-
-  private destroyExpected: boolean
-
-  public async destroy (error?: Error) {
-    if (error) {
-      this.socket.destroy(error)
-    } else {
-      this.destroyExpected = true
-      await this.exec('_d')
-    }
-  }
-
-  private async _init () {
-    const { socket, events, options: { blockingExecutions }, pendingRequests } = this
-
-    let bufferSink = Buffer.alloc(0)
-    let dataCallback: (() => void) | undefined
-    const waitForData = async () => {
-      if (this.destroyExpected || socket.destroyed) {
-        return
-      }
-
-      await new Promise<void>((resolve) => {
-        dataCallback = () => {
-          resolve()
-          dataCallback = undefined
-        }
-      })
-    }
-
-    socket.on('error', (error) => (!this.destroyExpected) && events.emit('error', error))
-    socket.on('close', (hadError) => {
-      dataCallback?.()
-      events.emit('close', hadError)
-    })
-    socket.on('data', (buffer) => {
-      bufferSink = Buffer.concat([bufferSink, buffer])
-      dataCallback?.()
-      events.emit('rawData', buffer)
-    })
-
-    while ((!socket.destroyed) && (!this.destroyExpected)) {
-      if (!bufferSink.length) {
-        await waitForData()
-      }
-
-      const sizeBuffer = bufferSink.slice(1, 1 + bufferSink[0])
-      if (sizeBuffer.length !== bufferSink[0]) {
-        await waitForData()
-        continue
-      }
-      const size = Number.parseInt(sizeBuffer.toString('hex'), 16)
-      const dataBuffer = bufferSink.slice(1 + sizeBuffer.length, 1 + sizeBuffer.length + size)
-      if (dataBuffer.length !== size) {
-        await waitForData()
-        continue
-      }
-      bufferSink = bufferSink.slice(1 + sizeBuffer.length + size)
-
-      if (blockingExecutions) {
-        await this.executePayload(dataBuffer)
-          .catch((error) => events.emit('error', error))
-      } else {
-        this.executePayload(dataBuffer)
-          .catch((error) => events.emit('error', error))
-      }
-    }
-
-    for (const tokenStr in pendingRequests) {
-      const { [tokenStr]: { reject } } = pendingRequests
-      delete pendingRequests[tokenStr]
-
-      reject(new Error('Socket is closed'))
-    }
   }
 }
 
