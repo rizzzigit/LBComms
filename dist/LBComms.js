@@ -71,23 +71,19 @@ var Port = /** @class */ (function () {
             return serializer.deserialize(payload.slice(1));
         }
     };
-    Port.prototype.execLocal = function (name) {
+    Port.prototype.execLocal = function (name, context) {
         var args = [];
-        for (var _i = 1; _i < arguments.length; _i++) {
-            args[_i - 1] = arguments[_i];
+        for (var _i = 2; _i < arguments.length; _i++) {
+            args[_i - 2] = arguments[_i];
         }
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, callbacks, options, context;
-            return tslib_1.__generator(this, function (_b) {
-                switch (_b.label) {
+            var callbacks;
+            return tslib_1.__generator(this, function (_a) {
+                switch (_a.label) {
                     case 0:
-                        _a = this, callbacks = _a.callbacks, options = _a.options;
-                        context = {
-                            requestEncrypted: !!options.key,
-                            responseEncrypted: !!options.key
-                        };
+                        callbacks = this.callbacks;
                         return [4 /*yield*/, callbacks[name].apply(callbacks, tslib_1.__spreadArray([context], args, false))];
-                    case 1: return [2 /*return*/, _b.sent()];
+                    case 1: return [2 /*return*/, _a.sent()];
                 }
             });
         });
@@ -107,7 +103,7 @@ var Port = /** @class */ (function () {
                             tokenStr = (token = crypto_1.default.randomBytes(8)).toString('hex');
                         } while (tokenStr in pendingRequests);
                         promise = new Promise(function (resolve, reject) { return (pendingRequests[tokenStr] = { resolve: resolve, reject: reject }); });
-                        return [4 /*yield*/, this.write([1, token, name, args])];
+                        return [4 /*yield*/, this.write([1, token, name, args], undefined)];
                     case 1:
                         _a.sent();
                         return [4 /*yield*/, promise];
@@ -125,7 +121,7 @@ var Port = /** @class */ (function () {
                 switch (_a.label) {
                     case 0:
                         this._destroyed = true;
-                        return [4 /*yield*/, this.exec('_dc')];
+                        return [4 /*yield*/, this.exec('_dc', [])];
                     case 1:
                         _a.sent();
                         this.socket.destroy(error);
@@ -134,16 +130,16 @@ var Port = /** @class */ (function () {
             });
         });
     };
-    Port.prototype.evaluatePayload = function (payload) {
+    Port.prototype.evaluatePayload = function (payload, isRequestEncrypted) {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var events, _a;
+            var _a, events, options, _b;
             var _this = this;
-            return tslib_1.__generator(this, function (_b) {
-                switch (_b.label) {
+            return tslib_1.__generator(this, function (_c) {
+                switch (_c.label) {
                     case 0:
-                        events = this.events;
-                        _a = payload[0];
-                        switch (_a) {
+                        _a = this, events = _a.events, options = _a.options;
+                        _b = payload[0];
+                        switch (_b) {
                             case 0: return [3 /*break*/, 1];
                             case 1: return [3 /*break*/, 3];
                             case 2: return [3 /*break*/, 5];
@@ -151,27 +147,31 @@ var Port = /** @class */ (function () {
                         return [3 /*break*/, 7];
                     case 1: return [4 /*yield*/, events.emit('data', payload[1])];
                     case 2:
-                        _b.sent();
+                        _c.sent();
                         return [3 /*break*/, 7];
                     case 3: return [4 /*yield*/, (function () { return tslib_1.__awaiter(_this, void 0, void 0, function () {
-                            var token, name, parameters, result, error_1;
+                            var token, name, parameters, context, result, error_1;
                             return tslib_1.__generator(this, function (_a) {
                                 switch (_a.label) {
                                     case 0:
                                         token = payload[1], name = payload[2], parameters = payload[3];
+                                        context = {
+                                            requestEncrypted: !!options.key,
+                                            responseEncrypted: !!options.key
+                                        };
                                         _a.label = 1;
                                     case 1:
                                         _a.trys.push([1, 4, , 6]);
-                                        return [4 /*yield*/, this.execLocal.apply(this, tslib_1.__spreadArray([name], parameters, false))];
+                                        return [4 /*yield*/, this.execLocal.apply(this, tslib_1.__spreadArray([name, context], parameters, false))];
                                     case 2:
                                         result = _a.sent();
-                                        return [4 /*yield*/, this.write([2, token, false, result])];
+                                        return [4 /*yield*/, this.write([2, token, false, result], context.responseEncrypted)];
                                     case 3:
                                         _a.sent();
                                         return [3 /*break*/, 6];
                                     case 4:
                                         error_1 = _a.sent();
-                                        return [4 /*yield*/, this.write([2, token, true, error_1])];
+                                        return [4 /*yield*/, this.write([2, token, true, error_1], context.responseEncrypted)];
                                     case 5:
                                         _a.sent();
                                         return [3 /*break*/, 6];
@@ -180,7 +180,7 @@ var Port = /** @class */ (function () {
                             });
                         }); })()];
                     case 4:
-                        _b.sent();
+                        _c.sent();
                         return [3 /*break*/, 7];
                     case 5: return [4 /*yield*/, (function () { return tslib_1.__awaiter(_this, void 0, void 0, function () {
                             var pendingRequests, token, isError, data, tokenStr, _a, resolve, reject;
@@ -203,7 +203,7 @@ var Port = /** @class */ (function () {
                             });
                         }); })()];
                     case 6:
-                        _b.sent();
+                        _c.sent();
                         return [3 /*break*/, 7];
                     case 7: return [2 /*return*/];
                 }
@@ -215,6 +215,9 @@ var Port = /** @class */ (function () {
         return new Promise(function (resolve, reject) { return _this.socket.write(buffer, function (error) { return error ? reject(error) : resolve(); }); });
     };
     Port.prototype.write = function (payload, encrypt) {
+        if (payload[1].type === 'Buffer') {
+            console.trace(payload[1]);
+        }
         var buffer = this.packPayload(payload, encrypt);
         var bufferSize = buffer.length.toString(16);
         if (bufferSize.length % 2) {
@@ -280,7 +283,7 @@ var Port = /** @class */ (function () {
                                     case 6:
                                         bufferSink = bufferSink.slice(1 + bufferSizeBuffer.length + buffer.length);
                                         payload = this.unpackPayload(buffer);
-                                        task = this.evaluatePayload(payload);
+                                        task = this.evaluatePayload(payload, !!buffer[0]);
                                         if (!options.blockingExecutions) return [3 /*break*/, 8];
                                         return [4 /*yield*/, task];
                                     case 7:
@@ -321,7 +324,7 @@ var Port = /** @class */ (function () {
                         return [4 /*yield*/, (function () { return tslib_1.__awaiter(_this, void 0, void 0, function () {
                                 return tslib_1.__generator(this, function (_a) {
                                     switch (_a.label) {
-                                        case 0: return [4 /*yield*/, this.exec('_np')];
+                                        case 0: return [4 /*yield*/, this.exec('_np', [])];
                                         case 1:
                                             _a.sent();
                                             return [2 /*return*/, Date.now()];

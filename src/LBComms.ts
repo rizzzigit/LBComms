@@ -133,12 +133,8 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     }
   }
 
-  public async execLocal <Name extends keyof LocalInterface> (name: Name, ...args: LocalInterface[Name][0]): Promise<LocalInterface[Name][1]> {
-    const { callbacks, options } = this
-    const context: PortCallbackContext = {
-      requestEncrypted: !!options.key,
-      responseEncrypted: !!options.key
-    }
+  public async execLocal <Name extends keyof LocalInterface> (name: Name, context: PortCallbackContext, ...args: LocalInterface[Name][0]): Promise<LocalInterface[Name][1]> {
+    const { callbacks } = this
 
     return await callbacks[name](context, ...args)
   }
@@ -153,7 +149,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     } while (tokenStr in pendingRequests)
 
     const promise = new Promise<PromiseFulfilledResult<RemoteInterface[Name][1]>>((resolve, reject) => (pendingRequests[tokenStr] = { resolve, reject }))
-    await this.write([1, token, <string> name, args])
+    await this.write([1, token, <string> name, args], undefined)
     return await promise
   }
 
@@ -170,12 +166,12 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
 
   public async destroy (error?: Error) {
     this._destroyed = true
-    await this.exec('_dc')
+    await this.exec('_dc', [])
     this.socket.destroy(error)
   }
 
-  public async evaluatePayload (payload: Payload) {
-    const { events } = this
+  public async evaluatePayload (payload: Payload, isRequestEncrypted: boolean) {
+    const { events, options } = this
 
     switch (payload[0]) {
       // Raw
@@ -187,13 +183,17 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       case 1:
         await (async () => {
           const [, token, name, parameters] = payload
+          const context: PortCallbackContext = {
+            requestEncrypted: !!options.key,
+            responseEncrypted: !!options.key
+          }
 
           try {
-            const result = await this.execLocal(name, ...parameters)
+            const result = await this.execLocal(name, context, ...parameters)
 
-            await this.write([2, token, false, result])
+            await this.write([2, token, false, result], context.responseEncrypted)
           } catch (error) {
-            await this.write([2, token, true, error])
+            await this.write([2, token, true, error], context.responseEncrypted)
           }
         })()
         break
@@ -227,6 +227,9 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
   }
 
   public write (payload: Payload, encrypt?: boolean) {
+    if (payload[1].type === 'Buffer') {
+      console.trace(payload[1])
+    }
     const buffer = this.packPayload(payload, encrypt)
 
     let bufferSize = buffer.length.toString(16)
@@ -290,7 +293,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       bufferSink = bufferSink.slice(1 + bufferSizeBuffer.length + buffer.length)
 
       const payload = this.unpackPayload(buffer)
-      const task = this.evaluatePayload(payload)
+      const task = this.evaluatePayload(payload, !!buffer[0])
 
       if (options.blockingExecutions) {
         await task
@@ -310,7 +313,7 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     let ms = 0
     for (let currentPass = 1; pass >= currentPass; currentPass++) {
       const timeDifference = (await (async () => {
-        await this.exec('_np')
+        await this.exec('_np', [])
 
         return Date.now()
       })()) - Date.now()

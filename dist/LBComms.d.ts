@@ -43,12 +43,12 @@ export declare class Port<LocalInterface extends PortInterface, RemoteInterface 
     get destroyed(): boolean;
     packPayload(payload: Payload, encrypt?: boolean): Buffer;
     unpackPayload(payload: Buffer): Payload;
-    execLocal<Name extends keyof LocalInterface>(name: Name, ...args: LocalInterface[Name][0]): Promise<LocalInterface[Name][1]>;
+    execLocal<Name extends keyof LocalInterface>(name: Name, context: PortCallbackContext, ...args: LocalInterface[Name][0]): Promise<LocalInterface[Name][1]>;
     exec<Name extends keyof RemoteInterface>(name: Name, ...args: RemoteInterface[Name][0]): Promise<RemoteInterface[Name][1]>;
     send(data: any, encrypt?: boolean): Promise<void>;
     private _pendingRequests;
     destroy(error?: Error): Promise<void>;
-    evaluatePayload(payload: Payload): Promise<void>;
+    evaluatePayload(payload: Payload, isRequestEncrypted: boolean): Promise<void>;
     private _write;
     write(payload: Payload, encrypt?: boolean): Promise<void>;
     private _wrap;
