@@ -285,6 +285,14 @@ var Port = /** @class */ (function () {
                                 dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
                                 events.emit('close', !!error_2);
                             });
+                            output.on('error', function (_error) { return events.emit('error', (error_2 = _error)); });
+                            output.on('drain', function () { return events.emit('drain'); });
+                            output.on('finish', function () { return events.emit('finish'); });
+                            output.on('close', function () {
+                                _this._destroyed = false;
+                                dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
+                                events.emit('close', !!error_2);
+                            });
                             input.on('data', function (buffer) {
                                 bufferSink = Buffer.concat([bufferSink, buffer]);
                                 dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();

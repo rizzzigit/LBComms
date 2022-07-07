@@ -310,6 +310,16 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
         events.emit('close', !!error)
       })
 
+      output.on('error', (_error) => events.emit('error', (error = _error)))
+      output.on('drain', () => events.emit('drain'))
+      output.on('finish', () => events.emit('finish'))
+
+      output.on('close', () => {
+        this._destroyed = false
+        dataCallback?.()
+        events.emit('close', !!error)
+      })
+
       input.on('data', (buffer) => {
         bufferSink = Buffer.concat([bufferSink, buffer])
         dataCallback?.()
