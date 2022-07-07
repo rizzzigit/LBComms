@@ -28,7 +28,16 @@ var Port = /** @class */ (function () {
         return new this(socket, callbacks, options);
     };
     Object.defineProperty(Port.prototype, "destroyed", {
-        get: function () { return this._destroyed || this.socket.destroyed; },
+        get: function () {
+            if (this._destroyed) {
+                return this._destroyed;
+            }
+            var socket = this.socket;
+            if (socket instanceof net_1.default.Socket) {
+                return socket.destroyed;
+            }
+            return (socket.in.destroyed || socket.out.destroyed);
+        },
         enumerable: false,
         configurable: true
     });
@@ -117,6 +126,7 @@ var Port = /** @class */ (function () {
     };
     Port.prototype.destroy = function (error) {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
+            var socket;
             return tslib_1.__generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -124,7 +134,14 @@ var Port = /** @class */ (function () {
                         return [4 /*yield*/, this.exec('_dc', [])];
                     case 1:
                         _a.sent();
-                        this.socket.destroy(error);
+                        socket = this.socket;
+                        if (socket instanceof net_1.default.Socket) {
+                            socket.destroy(error);
+                        }
+                        else {
+                            socket.in.destroy(error);
+                            socket.out.destroy(error);
+                        }
                         return [2 /*return*/];
                 }
             });
@@ -212,7 +229,15 @@ var Port = /** @class */ (function () {
     };
     Port.prototype._write = function (buffer) {
         var _this = this;
-        return new Promise(function (resolve, reject) { return _this.socket.write(buffer, function (error) { return error ? reject(error) : resolve(); }); });
+        return new Promise(function (resolve, reject) {
+            var socket = _this.socket;
+            if (socket instanceof net_1.default.Socket) {
+                socket.write(buffer, function (error) { return error ? reject(error) : resolve(); });
+            }
+            else {
+                socket.out.write(buffer, function (error) { return error ? reject(error) : resolve(); });
+            }
+        });
     };
     Port.prototype.write = function (payload, encrypt) {
         if (payload[1].type === 'Buffer') {
@@ -229,25 +254,42 @@ var Port = /** @class */ (function () {
     };
     Port.prototype._wrap = function () {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, socket, events, options, bufferSink, dataCallback, waitForData, tick;
+            var _a, socket, events, options, bufferSink, dataCallback, input, output, error_2, waitForData, tick;
             var _this = this;
             return tslib_1.__generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
                         _a = this, socket = _a.socket, events = _a.events, options = _a.options;
                         bufferSink = Buffer.alloc(0);
-                        socket.on('error', function (error) { return events.emit('error', error); });
-                        socket.on('drain', function () { return events.emit('drain'); });
-                        socket.on('finish', function () { return events.emit('finish'); });
-                        socket.on('close', function (hadError) {
-                            _this._destroyed = false;
-                            dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
-                            events.emit('close', hadError);
-                        });
-                        socket.on('data', function (buffer) {
-                            bufferSink = Buffer.concat([bufferSink, buffer]);
-                            dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
-                        });
+                        if (socket instanceof net_1.default.Socket) {
+                            socket.on('error', function (error) { return events.emit('error', error); });
+                            socket.on('drain', function () { return events.emit('drain'); });
+                            socket.on('finish', function () { return events.emit('finish'); });
+                            socket.on('close', function (hadError) {
+                                _this._destroyed = false;
+                                dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
+                                events.emit('close', hadError);
+                            });
+                            socket.on('data', function (buffer) {
+                                bufferSink = Buffer.concat([bufferSink, buffer]);
+                                dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
+                            });
+                        }
+                        else {
+                            input = socket.in, output = socket.out;
+                            input.on('error', function (_error) { return events.emit('error', (error_2 = _error)); });
+                            input.on('drain', function () { return events.emit('drain'); });
+                            input.on('finish', function () { return events.emit('finish'); });
+                            input.on('close', function () {
+                                _this._destroyed = false;
+                                dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
+                                events.emit('close', !!error_2);
+                            });
+                            input.on('data', function (buffer) {
+                                bufferSink = Buffer.concat([bufferSink, buffer]);
+                                dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
+                            });
+                        }
                         waitForData = function () { return new Promise(function (resolve) {
                             dataCallback = function () {
                                 dataCallback = undefined;
@@ -295,8 +337,16 @@ var Port = /** @class */ (function () {
                         }); };
                         _b.label = 1;
                     case 1:
-                        if (!!socket.destroyed) return [3 /*break*/, 3];
-                        return [4 /*yield*/, tick().catch(function (error) { return socket.destroy(error); })];
+                        if (!!(socket instanceof net_1.default.Socket ? socket : socket.in).destroyed) return [3 /*break*/, 3];
+                        return [4 /*yield*/, tick().catch(function (error) {
+                                if (socket instanceof net_1.default.Socket) {
+                                    socket.destroy(error);
+                                }
+                                else {
+                                    socket.in.destroy(error);
+                                    socket.out.destroy(error);
+                                }
+                            })];
                     case 2:
                         _b.sent();
                         return [3 /*break*/, 1];

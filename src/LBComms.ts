@@ -1,6 +1,7 @@
 import Crypto from 'crypto'
 import Net from 'net'
 import LBSerializer from '@rizzzi/lb-serializer'
+import Stream from 'stream'
 import EventEmitter, { EventInterface } from '@rizzzi/eventemitter'
 
 export interface PortInterface {
@@ -44,7 +45,10 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     return new this<LocalInterface, RemoteInterface>(socket, callbacks, options)
   }
 
-  public constructor (socket: Net.Socket, callbacks: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>) {
+  public constructor (socket: Net.Socket | {
+    in: Stream.Readable
+    out: Stream.Writable
+  }, callbacks: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>) {
     this.options = {
       blockingExecutions: false,
       ...options
@@ -78,12 +82,27 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
   public readonly off: this['events']['off']
 
   public readonly serializer: LBSerializer.Serializer
-  public readonly socket: Net.Socket
+  public readonly socket: Net.Socket | {
+    in: Stream.Readable
+    out: Stream.Writable
+  }
+
   public readonly options: PortOptions
   public readonly callbacks: PortCallbackMap<LocalInterface>
 
   private _destroyed: boolean
-  public get destroyed () { return this._destroyed || this.socket.destroyed }
+  public get destroyed () {
+    if (this._destroyed) {
+      return this._destroyed
+    }
+
+    const { socket } = this
+    if (socket instanceof Net.Socket) {
+      return socket.destroyed
+    }
+
+    return (socket.in.destroyed || socket.out.destroyed)
+  }
 
   public packPayload (payload: Payload, encrypt: boolean = !!this.options.key): Buffer {
     const { serializer } = this
@@ -167,7 +186,14 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
   public async destroy (error?: Error) {
     this._destroyed = true
     await this.exec('_dc', [])
-    this.socket.destroy(error)
+
+    const { socket } = this
+    if (socket instanceof Net.Socket) {
+      socket.destroy(error)
+    } else {
+      socket.in.destroy(error)
+      socket.out.destroy(error)
+    }
   }
 
   public async evaluatePayload (payload: Payload, isRequestEncrypted: boolean) {
@@ -223,7 +249,15 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
   }
 
   private _write (buffer: Buffer) {
-    return new Promise<void>((resolve, reject) => this.socket.write(buffer, (error) => error ? reject(error) : resolve()))
+    return new Promise<void>((resolve, reject) => {
+      const { socket } = this
+
+      if (socket instanceof Net.Socket) {
+        socket.write(buffer, (error) => error ? reject(error) : resolve())
+      } else {
+        socket.out.write(buffer, (error) => error ? reject(error) : resolve())
+      }
+    })
   }
 
   public write (payload: Payload, encrypt?: boolean) {
@@ -248,20 +282,39 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     let bufferSink = Buffer.alloc(0)
     let dataCallback: undefined | (() => void)
 
-    socket.on('error', (error) => events.emit('error', error))
-    socket.on('drain', () => events.emit('drain'))
-    socket.on('finish', () => events.emit('finish'))
+    if (socket instanceof Net.Socket) {
+      socket.on('error', (error) => events.emit('error', error))
+      socket.on('drain', () => events.emit('drain'))
+      socket.on('finish', () => events.emit('finish'))
 
-    socket.on('close', (hadError) => {
-      this._destroyed = false
-      dataCallback?.()
-      events.emit('close', hadError)
-    })
+      socket.on('close', (hadError) => {
+        this._destroyed = false
+        dataCallback?.()
+        events.emit('close', hadError)
+      })
 
-    socket.on('data', (buffer) => {
-      bufferSink = Buffer.concat([bufferSink, buffer])
-      dataCallback?.()
-    })
+      socket.on('data', (buffer) => {
+        bufferSink = Buffer.concat([bufferSink, buffer])
+        dataCallback?.()
+      })
+    } else {
+      const { in: input, out: output } = socket
+      let error: Error | undefined
+      input.on('error', (_error) => events.emit('error', (error = _error)))
+      input.on('drain', () => events.emit('drain'))
+      input.on('finish', () => events.emit('finish'))
+
+      input.on('close', () => {
+        this._destroyed = false
+        dataCallback?.()
+        events.emit('close', !!error)
+      })
+
+      input.on('data', (buffer) => {
+        bufferSink = Buffer.concat([bufferSink, buffer])
+        dataCallback?.()
+      })
+    }
 
     const waitForData = () => new Promise<void>((resolve) => {
       dataCallback = () => {
@@ -300,8 +353,15 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       }
     }
 
-    while (!socket.destroyed) {
-      await tick().catch((error) => socket.destroy(error))
+    while (!(socket instanceof Net.Socket ? socket : socket.in).destroyed) {
+      await tick().catch((error) => {
+        if (socket instanceof Net.Socket) {
+          socket.destroy(error)
+        } else {
+          socket.in.destroy(error)
+          socket.out.destroy(error)
+        }
+      })
     }
   }
 

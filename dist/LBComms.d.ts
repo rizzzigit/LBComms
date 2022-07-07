@@ -1,6 +1,9 @@
 /// <reference types="node" />
+/// <reference types="node" />
+/// <reference types="node" />
 import Net from 'net';
 import LBSerializer from '@rizzzi/lb-serializer';
+import Stream from 'stream';
 import EventEmitter, { EventInterface } from '@rizzzi/eventemitter';
 export interface PortInterface {
     [key: string]: [[...args: Array<any>], any];
@@ -30,13 +33,19 @@ export declare type ResponsePayloadParams = [type: 2, token: Buffer, isError: bo
 export declare type Payload = RawPayloadParams | RequestPayloadParams | ResponsePayloadParams;
 export declare class Port<LocalInterface extends PortInterface, RemoteInterface extends PortInterface> {
     static new<LocalInterface extends PortInterface, RemoteInterface extends PortInterface>(socket: Net.Socket, callbacks: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>): Port<LocalInterface, RemoteInterface>;
-    constructor(socket: Net.Socket, callbacks: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>);
+    constructor(socket: Net.Socket | {
+        in: Stream.Readable;
+        out: Stream.Writable;
+    }, callbacks: PortCallbackMap<LocalInterface>, options?: Partial<PortOptions>);
     readonly events: EventEmitter<PortEvents>;
     readonly on: this['events']['on'];
     readonly once: this['events']['once'];
     readonly off: this['events']['off'];
     readonly serializer: LBSerializer.Serializer;
-    readonly socket: Net.Socket;
+    readonly socket: Net.Socket | {
+        in: Stream.Readable;
+        out: Stream.Writable;
+    };
     readonly options: PortOptions;
     readonly callbacks: PortCallbackMap<LocalInterface>;
     private _destroyed;
