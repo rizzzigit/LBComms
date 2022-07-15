@@ -232,9 +232,15 @@ var Port = /** @class */ (function () {
         return new Promise(function (resolve, reject) {
             var socket = _this.socket;
             if (socket instanceof net_1.default.Socket) {
+                if (socket.destroyed) {
+                    throw new Error('Socket already destroyed');
+                }
                 socket.write(buffer, function (error) { return error ? reject(error) : resolve(); });
             }
             else {
+                if (socket.out.destroyed) {
+                    throw new Error('Write stream already destroyed');
+                }
                 socket.out.write(buffer, function (error) { return error ? reject(error) : resolve(); });
             }
         });

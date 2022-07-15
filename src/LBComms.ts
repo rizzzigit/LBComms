@@ -253,8 +253,16 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
       const { socket } = this
 
       if (socket instanceof Net.Socket) {
+        if (socket.destroyed) {
+          throw new Error('Socket already destroyed')
+        }
+
         socket.write(buffer, (error) => error ? reject(error) : resolve())
       } else {
+        if (socket.out.destroyed) {
+          throw new Error('Write stream already destroyed')
+        }
+
         socket.out.write(buffer, (error) => error ? reject(error) : resolve())
       }
     })
