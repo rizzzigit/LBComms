@@ -26,9 +26,7 @@ export interface PortEvents extends EventInterface {
   listening: []
 
   data: [data: any]
-  drain: []
   close: [hadError: boolean]
-  finish: []
   error: [error: Error]
 }
 
@@ -71,9 +69,9 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     }
 
     this._pendingRequests = {}
-    this._wrap()
-
     this._destroyed = false
+
+    this._wrap()
   }
 
   public readonly events: EventEmitter<PortEvents>
@@ -269,9 +267,6 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
   }
 
   public write (payload: Payload, encrypt?: boolean) {
-    if (payload[1].type === 'Buffer') {
-      console.trace(payload[1])
-    }
     const buffer = this.packPayload(payload, encrypt)
 
     let bufferSize = buffer.length.toString(16)
@@ -284,101 +279,76 @@ export class Port<LocalInterface extends PortInterface, RemoteInterface extends 
     return this._write(Buffer.concat([bufferSizeBufferLength, bufferSizeBuffer, buffer]))
   }
 
-  private async _wrap () {
+  private _wrap () {
     const { socket, events, options } = this
 
+    let isProcessingBufferSink = false
     let bufferSink = Buffer.alloc(0)
-    let dataCallback: undefined | (() => void)
 
-    if (socket instanceof Net.Socket) {
-      socket.on('error', (error) => events.emit('error', error))
-      socket.on('drain', () => events.emit('drain'))
-      socket.on('finish', () => events.emit('finish'))
+    const processBufferSink = async () => {
+      while (bufferSink.length) {
+        const bufferSizeBufferLength = bufferSink[0]
+        const bufferSizeBuffer = bufferSink.slice(1, bufferSizeBufferLength + 1)
+        if (bufferSizeBufferLength !== bufferSizeBuffer.length) {
+          return
+        }
 
-      socket.on('close', (hadError) => {
-        this._destroyed = false
-        dataCallback?.()
-        events.emit('close', hadError)
-      })
+        const bufferSize = Number.parseInt(`${bufferSizeBuffer.toString('hex')}`, 16)
+        const buffer = bufferSink.slice(1 + bufferSizeBufferLength, 1 + bufferSizeBufferLength + bufferSize)
+        if (bufferSize !== buffer.length) {
+          return
+        }
 
-      socket.on('data', (buffer) => {
-        bufferSink = Buffer.concat([bufferSink, buffer])
-        dataCallback?.()
-      })
-    } else {
-      const { in: input, out: output } = socket
-      let error: Error | undefined
-      input.on('error', (_error) => events.emit('error', (error = _error)))
-      input.on('drain', () => events.emit('drain'))
-      input.on('finish', () => events.emit('finish'))
+        bufferSink = bufferSink.slice(1 + bufferSizeBuffer.length + buffer.length)
+        const payload = this.unpackPayload(buffer)
+        const task = this.evaluatePayload(payload, !!buffer[0])
 
-      input.on('close', () => {
-        this._destroyed = false
-        dataCallback?.()
-        events.emit('close', !!error)
-      })
-
-      output.on('error', (_error) => events.emit('error', (error = _error)))
-      output.on('drain', () => events.emit('drain'))
-      output.on('finish', () => events.emit('finish'))
-
-      output.on('close', () => {
-        this._destroyed = false
-        dataCallback?.()
-        events.emit('close', !!error)
-      })
-
-      input.on('data', (buffer) => {
-        bufferSink = Buffer.concat([bufferSink, buffer])
-        dataCallback?.()
-      })
-    }
-
-    const waitForData = () => new Promise<void>((resolve) => {
-      dataCallback = () => {
-        dataCallback = undefined
-        resolve()
-      }
-    })
-
-    const tick = async () => {
-      if (!bufferSink.length) {
-        await waitForData()
-      }
-
-      const bufferSizeBufferLength = bufferSink[0]
-      const bufferSizeBuffer = bufferSink.slice(1, bufferSizeBufferLength + 1)
-      if (bufferSizeBufferLength !== bufferSizeBuffer.length) {
-        await waitForData()
-        return
-      }
-
-      const bufferSize = Number.parseInt(`${bufferSizeBuffer.toString('hex')}`, 16)
-      const buffer = bufferSink.slice(1 + bufferSizeBufferLength, 1 + bufferSizeBufferLength + bufferSize)
-
-      if (bufferSize !== buffer.length) {
-        await waitForData()
-        return
-      }
-
-      bufferSink = bufferSink.slice(1 + bufferSizeBuffer.length + buffer.length)
-
-      const payload = this.unpackPayload(buffer)
-      const task = this.evaluatePayload(payload, !!buffer[0])
-
-      if (options.blockingExecutions) {
-        await task
+        if (options.blockingExecutions) {
+          await task
+        }
       }
     }
 
-    while (!(socket instanceof Net.Socket ? socket : socket.in).destroyed) {
-      await tick().catch((error) => {
+    const pushToBufferSink = async (data: Buffer) => {
+      bufferSink = Buffer.concat([bufferSink, data])
+      if (isProcessingBufferSink) {
+        return
+      }
+
+      isProcessingBufferSink = true
+      try {
+        await processBufferSink()
+      } catch (error: any) {
         if (socket instanceof Net.Socket) {
           socket.destroy(error)
         } else {
           socket.in.destroy(error)
           socket.out.destroy(error)
         }
+      } finally {
+        isProcessingBufferSink = false
+      }
+    }
+
+    if (socket instanceof Net.Socket) {
+      socket.on('data', pushToBufferSink)
+      socket.on('close', (hadError) => events.emit('close', hadError))
+      socket.on('error', (error) => events.emit('error', error))
+    } else {
+      const { in: input, out: output } = socket
+      let hadError = false
+
+      input.on('data', pushToBufferSink)
+      input.on('close', () => events.emit('close', hadError))
+      input.on('error', (error) => {
+        hadError = true
+        events.emit('error', error)
+      })
+
+      output.on('close', () => events.emit('close', hadError))
+      output.on('error', (error) => {
+        hadError = true
+        events.emit('error', error)
       })
     }
   }

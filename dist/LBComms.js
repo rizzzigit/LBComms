@@ -21,8 +21,8 @@ var Port = /** @class */ (function () {
                 _this._destroyed = true;
             } });
         this._pendingRequests = {};
-        this._wrap();
         this._destroyed = false;
+        this._wrap();
     }
     Port.new = function (socket, callbacks, options) {
         return new this(socket, callbacks, options);
@@ -246,9 +246,6 @@ var Port = /** @class */ (function () {
         });
     };
     Port.prototype.write = function (payload, encrypt) {
-        if (payload[1].type === 'Buffer') {
-            console.trace(payload[1]);
-        }
         var buffer = this.packPayload(payload, encrypt);
         var bufferSize = buffer.length.toString(16);
         if (bufferSize.length % 2) {
@@ -259,115 +256,93 @@ var Port = /** @class */ (function () {
         return this._write(Buffer.concat([bufferSizeBufferLength, bufferSizeBuffer, buffer]));
     };
     Port.prototype._wrap = function () {
-        return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _a, socket, events, options, bufferSink, dataCallback, input, output, error_2, waitForData, tick;
-            var _this = this;
-            return tslib_1.__generator(this, function (_b) {
-                switch (_b.label) {
+        var _this = this;
+        var _a = this, socket = _a.socket, events = _a.events, options = _a.options;
+        var isProcessingBufferSink = false;
+        var bufferSink = Buffer.alloc(0);
+        var processBufferSink = function () { return tslib_1.__awaiter(_this, void 0, void 0, function () {
+            var bufferSizeBufferLength, bufferSizeBuffer, bufferSize, buffer, payload, task;
+            return tslib_1.__generator(this, function (_a) {
+                switch (_a.label) {
                     case 0:
-                        _a = this, socket = _a.socket, events = _a.events, options = _a.options;
-                        bufferSink = Buffer.alloc(0);
-                        if (socket instanceof net_1.default.Socket) {
-                            socket.on('error', function (error) { return events.emit('error', error); });
-                            socket.on('drain', function () { return events.emit('drain'); });
-                            socket.on('finish', function () { return events.emit('finish'); });
-                            socket.on('close', function (hadError) {
-                                _this._destroyed = false;
-                                dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
-                                events.emit('close', hadError);
-                            });
-                            socket.on('data', function (buffer) {
-                                bufferSink = Buffer.concat([bufferSink, buffer]);
-                                dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
-                            });
+                        if (!bufferSink.length) return [3 /*break*/, 3];
+                        bufferSizeBufferLength = bufferSink[0];
+                        bufferSizeBuffer = bufferSink.slice(1, bufferSizeBufferLength + 1);
+                        if (bufferSizeBufferLength !== bufferSizeBuffer.length) {
+                            return [2 /*return*/];
                         }
-                        else {
-                            input = socket.in, output = socket.out;
-                            input.on('error', function (_error) { return events.emit('error', (error_2 = _error)); });
-                            input.on('drain', function () { return events.emit('drain'); });
-                            input.on('finish', function () { return events.emit('finish'); });
-                            input.on('close', function () {
-                                _this._destroyed = false;
-                                dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
-                                events.emit('close', !!error_2);
-                            });
-                            output.on('error', function (_error) { return events.emit('error', (error_2 = _error)); });
-                            output.on('drain', function () { return events.emit('drain'); });
-                            output.on('finish', function () { return events.emit('finish'); });
-                            output.on('close', function () {
-                                _this._destroyed = false;
-                                dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
-                                events.emit('close', !!error_2);
-                            });
-                            input.on('data', function (buffer) {
-                                bufferSink = Buffer.concat([bufferSink, buffer]);
-                                dataCallback === null || dataCallback === void 0 ? void 0 : dataCallback();
-                            });
+                        bufferSize = Number.parseInt("".concat(bufferSizeBuffer.toString('hex')), 16);
+                        buffer = bufferSink.slice(1 + bufferSizeBufferLength, 1 + bufferSizeBufferLength + bufferSize);
+                        if (bufferSize !== buffer.length) {
+                            return [2 /*return*/];
                         }
-                        waitForData = function () { return new Promise(function (resolve) {
-                            dataCallback = function () {
-                                dataCallback = undefined;
-                                resolve();
-                            };
-                        }); };
-                        tick = function () { return tslib_1.__awaiter(_this, void 0, void 0, function () {
-                            var bufferSizeBufferLength, bufferSizeBuffer, bufferSize, buffer, payload, task;
-                            return tslib_1.__generator(this, function (_a) {
-                                switch (_a.label) {
-                                    case 0:
-                                        if (!!bufferSink.length) return [3 /*break*/, 2];
-                                        return [4 /*yield*/, waitForData()];
-                                    case 1:
-                                        _a.sent();
-                                        _a.label = 2;
-                                    case 2:
-                                        bufferSizeBufferLength = bufferSink[0];
-                                        bufferSizeBuffer = bufferSink.slice(1, bufferSizeBufferLength + 1);
-                                        if (!(bufferSizeBufferLength !== bufferSizeBuffer.length)) return [3 /*break*/, 4];
-                                        return [4 /*yield*/, waitForData()];
-                                    case 3:
-                                        _a.sent();
-                                        return [2 /*return*/];
-                                    case 4:
-                                        bufferSize = Number.parseInt("".concat(bufferSizeBuffer.toString('hex')), 16);
-                                        buffer = bufferSink.slice(1 + bufferSizeBufferLength, 1 + bufferSizeBufferLength + bufferSize);
-                                        if (!(bufferSize !== buffer.length)) return [3 /*break*/, 6];
-                                        return [4 /*yield*/, waitForData()];
-                                    case 5:
-                                        _a.sent();
-                                        return [2 /*return*/];
-                                    case 6:
-                                        bufferSink = bufferSink.slice(1 + bufferSizeBuffer.length + buffer.length);
-                                        payload = this.unpackPayload(buffer);
-                                        task = this.evaluatePayload(payload, !!buffer[0]);
-                                        if (!options.blockingExecutions) return [3 /*break*/, 8];
-                                        return [4 /*yield*/, task];
-                                    case 7:
-                                        _a.sent();
-                                        _a.label = 8;
-                                    case 8: return [2 /*return*/];
-                                }
-                            });
-                        }); };
-                        _b.label = 1;
+                        bufferSink = bufferSink.slice(1 + bufferSizeBuffer.length + buffer.length);
+                        payload = this.unpackPayload(buffer);
+                        task = this.evaluatePayload(payload, !!buffer[0]);
+                        if (!options.blockingExecutions) return [3 /*break*/, 2];
+                        return [4 /*yield*/, task];
                     case 1:
-                        if (!!(socket instanceof net_1.default.Socket ? socket : socket.in).destroyed) return [3 /*break*/, 3];
-                        return [4 /*yield*/, tick().catch(function (error) {
-                                if (socket instanceof net_1.default.Socket) {
-                                    socket.destroy(error);
-                                }
-                                else {
-                                    socket.in.destroy(error);
-                                    socket.out.destroy(error);
-                                }
-                            })];
-                    case 2:
-                        _b.sent();
-                        return [3 /*break*/, 1];
+                        _a.sent();
+                        _a.label = 2;
+                    case 2: return [3 /*break*/, 0];
                     case 3: return [2 /*return*/];
                 }
             });
-        });
+        }); };
+        var pushToBufferSink = function (data) { return tslib_1.__awaiter(_this, void 0, void 0, function () {
+            var error_2;
+            return tslib_1.__generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        bufferSink = Buffer.concat([bufferSink, data]);
+                        if (isProcessingBufferSink) {
+                            return [2 /*return*/];
+                        }
+                        isProcessingBufferSink = true;
+                        _a.label = 1;
+                    case 1:
+                        _a.trys.push([1, 3, 4, 5]);
+                        return [4 /*yield*/, processBufferSink()];
+                    case 2:
+                        _a.sent();
+                        return [3 /*break*/, 5];
+                    case 3:
+                        error_2 = _a.sent();
+                        if (socket instanceof net_1.default.Socket) {
+                            socket.destroy(error_2);
+                        }
+                        else {
+                            socket.in.destroy(error_2);
+                            socket.out.destroy(error_2);
+                        }
+                        return [3 /*break*/, 5];
+                    case 4:
+                        isProcessingBufferSink = false;
+                        return [7 /*endfinally*/];
+                    case 5: return [2 /*return*/];
+                }
+            });
+        }); };
+        if (socket instanceof net_1.default.Socket) {
+            socket.on('data', pushToBufferSink);
+            socket.on('close', function (hadError) { return events.emit('close', hadError); });
+            socket.on('error', function (error) { return events.emit('error', error); });
+        }
+        else {
+            var input = socket.in, output = socket.out;
+            var hadError_1 = false;
+            input.on('data', pushToBufferSink);
+            input.on('close', function () { return events.emit('close', hadError_1); });
+            input.on('error', function (error) {
+                hadError_1 = true;
+                events.emit('error', error);
+            });
+            output.on('close', function () { return events.emit('close', hadError_1); });
+            output.on('error', function (error) {
+                hadError_1 = true;
+                events.emit('error', error);
+            });
+        }
     };
     Port.prototype.ping = function (pass) {
         if (pass === void 0) { pass = 1; }

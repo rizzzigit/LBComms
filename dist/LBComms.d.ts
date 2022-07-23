@@ -22,9 +22,7 @@ export interface PortOptions {
 export interface PortEvents extends EventInterface {
     listening: [];
     data: [data: any];
-    drain: [];
     close: [hadError: boolean];
-    finish: [];
     error: [error: Error];
 }
 export declare type RawPayloadParams = [type: 0, data: any];
