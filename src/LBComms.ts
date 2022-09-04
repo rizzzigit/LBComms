@@ -74,7 +74,7 @@ export class Connection<LocalFunctions extends ConnectionFunctions, RemoteFuncti
     this.emit = emit
 
     const serializer = new LBSerializer.Serializer()
-    const pendingRequests: {
+    const pendingCalls: {
       [key: string]: {
         resolve: (data: any) => void
         reject: (error: Error) => void
@@ -159,9 +159,9 @@ export class Connection<LocalFunctions extends ConnectionFunctions, RemoteFuncti
         let tokenStr: string
         do {
           tokenStr = (token = Crypto.randomBytes(8)).toString('hex')
-        } while (tokenStr in pendingRequests)
+        } while (tokenStr in pendingCalls)
 
-        const promise = new Promise<PromiseFulfilledResult<RemoteFunctions[Name][1]>>((resolve, reject) => (pendingRequests[tokenStr] = { resolve, reject }))
+        const promise = new Promise<PromiseFulfilledResult<RemoteFunctions[Name][1]>>((resolve, reject) => (pendingCalls[tokenStr] = { resolve, reject }))
         await methods.write([1, token, <string> name, args], undefined)
         return await promise
       },
@@ -221,12 +221,12 @@ export class Connection<LocalFunctions extends ConnectionFunctions, RemoteFuncti
             const [, token, isError, data] = payload
 
             const tokenStr = token.toString('hex')
-            if (!(tokenStr in pendingRequests)) {
+            if (!(tokenStr in pendingCalls)) {
               return
             }
 
-            const { resolve, reject } = pendingRequests[tokenStr]
-            delete pendingRequests[tokenStr]
+            const { resolve, reject } = pendingCalls[tokenStr]
+            delete pendingCalls[tokenStr]
 
             if (isError) {
               reject(data)
@@ -405,11 +405,11 @@ export class Connection<LocalFunctions extends ConnectionFunctions, RemoteFuncti
       },
 
       detach: () => {
-        for (const token in pendingRequests) {
-          const { [token]: pendingRequest } = pendingRequests
-          delete pendingRequests[token]
+        for (const token in pendingCalls) {
+          const { [token]: pendingCall } = pendingCalls
+          delete pendingCalls[token]
 
-          pendingRequest.reject(new Error('Detached from the underlying socket.'))
+          pendingCall.reject(new Error('Detached from the underlying socket.'))
         }
 
         const { stream } = properties
@@ -465,9 +465,9 @@ export class Connection<LocalFunctions extends ConnectionFunctions, RemoteFuncti
     })
 
     on('close', () => {
-      for (const token in pendingRequests) {
-        const { [token]: { reject } } = pendingRequests
-        delete pendingRequests[token]
+      for (const token in pendingCalls) {
+        const { [token]: { reject } } = pendingCalls
+        delete pendingCalls[token]
 
         reject(new Error('Socket closed'))
       }

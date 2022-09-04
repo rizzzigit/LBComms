@@ -26,7 +26,7 @@ class Connection {
         this.off = off;
         this.emit = emit;
         const serializer = new lb_serializer_1.default.Serializer();
-        const pendingRequests = {};
+        const pendingCalls = {};
         const properties = {
             destroyed: true
         };
@@ -90,8 +90,8 @@ class Connection {
                 let tokenStr;
                 do {
                     tokenStr = (token = crypto_1.default.randomBytes(8)).toString('hex');
-                } while (tokenStr in pendingRequests);
-                const promise = new Promise((resolve, reject) => (pendingRequests[tokenStr] = { resolve, reject }));
+                } while (tokenStr in pendingCalls);
+                const promise = new Promise((resolve, reject) => (pendingCalls[tokenStr] = { resolve, reject }));
                 await methods.write([1, token, name, args], undefined);
                 return await promise;
             },
@@ -145,11 +145,11 @@ class Connection {
                         {
                             const [, token, isError, data] = payload;
                             const tokenStr = token.toString('hex');
-                            if (!(tokenStr in pendingRequests)) {
+                            if (!(tokenStr in pendingCalls)) {
                                 return;
                             }
-                            const { resolve, reject } = pendingRequests[tokenStr];
-                            delete pendingRequests[tokenStr];
+                            const { resolve, reject } = pendingCalls[tokenStr];
+                            delete pendingCalls[tokenStr];
                             if (isError) {
                                 reject(data);
                             }
@@ -303,10 +303,10 @@ class Connection {
                 emit('attach', stream);
             },
             detach: () => {
-                for (const token in pendingRequests) {
-                    const { [token]: pendingRequest } = pendingRequests;
-                    delete pendingRequests[token];
-                    pendingRequest.reject(new Error('Detached from the underlying socket.'));
+                for (const token in pendingCalls) {
+                    const { [token]: pendingCall } = pendingCalls;
+                    delete pendingCalls[token];
+                    pendingCall.reject(new Error('Detached from the underlying socket.'));
                 }
                 const { stream } = properties;
                 if (!stream) {
@@ -355,9 +355,9 @@ class Connection {
             }
         });
         on('close', () => {
-            for (const token in pendingRequests) {
-                const { [token]: { reject } } = pendingRequests;
-                delete pendingRequests[token];
+            for (const token in pendingCalls) {
+                const { [token]: { reject } } = pendingCalls;
+                delete pendingCalls[token];
                 reject(new Error('Socket closed'));
             }
         });
