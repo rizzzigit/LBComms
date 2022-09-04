@@ -354,6 +354,13 @@ class Connection {
                 get: () => properties.stream
             }
         });
+        on('close', () => {
+            for (const token in pendingRequests) {
+                const { [token]: { reject } } = pendingRequests;
+                delete pendingRequests[token];
+                reject(new Error('Socket closed'));
+            }
+        });
         if (stream) {
             methods.attach(stream);
         }
